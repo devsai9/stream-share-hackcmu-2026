@@ -27,7 +27,6 @@ const STEPS_PER_BAR = 4;
 const TRACK_BAR_COUNT = 100;
 const TRACK_TOTAL_STEPS = TRACK_BAR_COUNT * STEPS_PER_BAR;
 const MIDI_TOTAL_STEPS = 16;
-const MIDI_BAR_COUNT = MIDI_TOTAL_STEPS / STEPS_PER_BAR;
 
 interface DragState {
     noteId: string;
@@ -505,11 +504,14 @@ export default function EditorPage() {
             const draggedBlock = blocks.find((block) => block.id === activeClipDrag.blockId);
             if (!draggedBlock) return;
 
+            const snappedStartStep = Math.round(
+                (activeClipDrag.clipStartStep + pointerStep - activeClipDrag.pointerStartStep) / STEPS_PER_BAR,
+            ) * STEPS_PER_BAR;
             const nextStartStep = Math.max(
                 0,
                 Math.min(
-                    TRACK_TOTAL_STEPS - draggedBlock.length_steps,
-                    Math.round(activeClipDrag.clipStartStep + pointerStep - activeClipDrag.pointerStartStep),
+                    Math.floor((TRACK_TOTAL_STEPS - draggedBlock.length_steps) / STEPS_PER_BAR) * STEPS_PER_BAR,
+                    snappedStartStep,
                 ),
             );
             const nextEndStep = nextStartStep + draggedBlock.length_steps;
@@ -567,6 +569,15 @@ export default function EditorPage() {
     if (error && !project) {
         return <main style={styles.statusPage}>{error}</main>;
     }
+
+    const activeBlock = blocks.find((block) => block.id === activeBlockId);
+    const midiBarStart = activeBlock
+        ? Math.floor(activeBlock.start_step / STEPS_PER_BAR) + 1
+        : 1;
+    const midiBarCount = Math.max(
+        1,
+        Math.ceil((activeBlock?.length_steps ?? MIDI_TOTAL_STEPS) / STEPS_PER_BAR),
+    );
 
     return (
         <div style={styles.pageContainer}>
@@ -875,16 +886,16 @@ export default function EditorPage() {
                     <div className="editor-scrollbar" style={styles.gridScrollViewport}>
                         <div style={styles.gridContent}>
                             <div style={styles.midiBarRuler}>
-                                {Array.from({ length: MIDI_BAR_COUNT }).map((_, barIndex) => (
+                                {Array.from({ length: midiBarCount }).map((_, barIndex) => (
                                     <div
                                         key={barIndex}
                                         style={{
                                             ...styles.barNumber,
-                                            left: `${(barIndex / MIDI_BAR_COUNT) * 100}%`,
-                                            width: `${(1 / MIDI_BAR_COUNT) * 100}%`,
+                                            left: `${(barIndex / midiBarCount) * 100}%`,
+                                            width: `${(1 / midiBarCount) * 100}%`,
                                         }}
                                     >
-                                        {barIndex + 1}
+                                        {midiBarStart + barIndex}
                                     </div>
                                 ))}
                             </div>
@@ -1216,7 +1227,8 @@ const styles: Record<string, React.CSSProperties> = {
     },
     midiBarRuler: {
         position: "relative",
-        width: "640px",
+        width: "100%",
+        minWidth: "640px",
         height: "24px",
         flexShrink: 0,
         borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
@@ -1444,12 +1456,13 @@ const styles: Record<string, React.CSSProperties> = {
     gridRow: {
         flex: 1,
         display: "flex",
-        borderBottom: "1px solid rgba(255, 255, 255, 0.025)",
         position: "relative",
     },
     gridCell: {
         flex: 1,
-        borderRight: "1px solid rgba(255, 255, 255, 0.025)",
+        border: "none",
+        borderRight: "1px solid rgba(210, 131, 42, 0.035)",
+        borderBottom: "1px solid rgba(152, 49, 9, 0.045)",
         appearance: "none",
         minWidth: 0,
         padding: 0,
