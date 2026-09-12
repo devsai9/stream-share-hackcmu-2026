@@ -187,6 +187,10 @@ export default function EditorPage() {
         setNotes(nextNotes);
     }, []);
 
+    function getUserInitials(userName: string | undefined) {
+        return userName?.slice(0, 2).toUpperCase() ?? "?";
+    }
+
     const {
         peers,
         localPresence,
@@ -1230,6 +1234,11 @@ export default function EditorPage() {
                                                 outline: selectedNoteId === note.id ? "2px solid #f5c451" : "none",
                                             }}
                                         >
+                                            {note.isDragging && (
+                                                <span style={styles.noteMoverInitials}>
+                                                    {getUserInitials(note.movingUserEmail ?? localPresence.userName)}
+                                                </span>
+                                            )}
                                             {note.pitch}
                                             <button
                                                 type="button"
@@ -1780,6 +1789,21 @@ const styles: Record<string, React.CSSProperties> = {
         touchAction: "none",
         userSelect: "none",
         overflow: "hidden",
+    },
+    noteMoverInitials: {
+        position: "absolute",
+        top: "3px",
+        left: "4px",
+        padding: "1px 3px",
+        borderRadius: "2px",
+        backgroundColor: "rgba(0, 0, 0, 0.45)",
+        color: "var(--foreground)",
+        fontSize: "8px",
+        fontWeight: 800,
+        lineHeight: 1,
+        letterSpacing: "0.02em",
+        pointerEvents: "none",
+        zIndex: 2,
     },
     resizeHandle: {
         position: "absolute",
