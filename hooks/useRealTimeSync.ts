@@ -104,7 +104,12 @@ export function useRealTimeSync({
 		await channel.send({
 			type: "broadcast",
 			event: CURSOR_EVENT,
-			payload: { senderId: user.userId, presence },
+			payload: {
+				senderId: user.userId,
+				position: cursorStep,
+				email: user.userName,
+				presence,
+			},
 		});
 	}, [isConnected, user]);
 

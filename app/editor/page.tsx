@@ -72,6 +72,7 @@ export default function EditorPage() {
     const [resizeState, setResizeState] = useState<ResizeState | null>(null);
     const [clipDragState, setClipDragState] = useState<ClipDragState | null>(null);
     const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+    const [remoteCursors, setRemoteCursors] = useState<Record<string, PeerPresence>>({});
     const gridRef = useRef<HTMLDivElement>(null);
     const timelineRef = useRef<HTMLDivElement>(null);
 
@@ -95,10 +96,21 @@ export default function EditorPage() {
         };
     }, [user]);
 
-    const { peers, isConnected, broadcastNotes } = useRealTimeSync({
+    const { peers, isConnected, broadcastNotes, broadcastCursor } = useRealTimeSync({
         roomId: projectId ?? "",
         user: presence ?? { userId: "", userName: "", color: "" },
         onNotesUpdated: setNotes,
+        onCursorMoved: (peer) => {
+            setRemoteCursors((currentCursors) => {
+                if (peer.cursorStep === undefined) {
+                    const nextCursors = { ...currentCursors };
+                    delete nextCursors[peer.userId];
+                    return nextCursors;
+                }
+
+                return { ...currentCursors, [peer.userId]: peer };
+            });
+        },
     });
 
     useEffect(() => {
@@ -469,6 +481,15 @@ export default function EditorPage() {
         });
     }
 
+    function broadcastGridCursor(event: React.PointerEvent<HTMLDivElement>) {
+        const grid = gridRef.current;
+        if (!grid) return;
+
+        const rect = grid.getBoundingClientRect();
+        const cursorStep = Math.max(0, Math.min(TOTAL_STEPS, ((event.clientX - rect.left) / rect.width) * TOTAL_STEPS));
+        void broadcastCursor(cursorStep);
+    }
+
     useEffect(() => {
         if (!clipDragState) return;
         const activeClipDrag = clipDragState;
@@ -770,7 +791,12 @@ export default function EditorPage() {
                     </div>
 
                     {/* Piano Grid Canvas */}
-                    <div ref={gridRef} style={styles.gridCanvas}>
+                    <div
+                        ref={gridRef}
+                        style={styles.gridCanvas}
+                        onPointerMove={broadcastGridCursor}
+                        onPointerLeave={() => void broadcastCursor(undefined)}
+                    >
                         {currentStep >= 0 && (
                             <div
                                 aria-hidden="true"
@@ -780,6 +806,25 @@ export default function EditorPage() {
                                 }}
                             />
                         )}
+                        {Object.values(remoteCursors).filter((peer) => peers.some((activePeer) => activePeer.userId === peer.userId)).map((peer) => {
+                            if (peer.cursorStep === undefined) return null;
+
+                            return (
+                                <div
+                                    key={peer.userId}
+                                    aria-label={`${peer.userName}'s cursor`}
+                                    style={{
+                                        ...styles.remoteCursor,
+                                        left: `${(peer.cursorStep / TOTAL_STEPS) * 100}%`,
+                                        backgroundColor: peer.color,
+                                    }}
+                                >
+                                    <span style={{ ...styles.remoteCursorLabel, backgroundColor: peer.color }}>
+                                        {peer.userName}
+                                    </span>
+                                </div>
+                            );
+                        })}
                         {PITCHES.map((pitch) => (
                             <div key={pitch} style={styles.gridRow}>
                                 {Array.from({ length: TOTAL_STEPS }).map((_, stepIndex) => (
@@ -1231,6 +1276,29 @@ const styles: Record<string, React.CSSProperties> = {
         backgroundColor: "var(--accent)",
         pointerEvents: "none",
         zIndex: 2,
+    },
+    remoteCursor: {
+        position: "absolute",
+        top: 0,
+        bottom: 0,
+        width: "2px",
+        pointerEvents: "none",
+        zIndex: 3,
+    },
+    remoteCursorLabel: {
+        position: "absolute",
+        top: "4px",
+        left: "4px",
+        maxWidth: "160px",
+        padding: "2px 5px",
+        borderRadius: "3px",
+        color: "#111315",
+        fontSize: "9px",
+        fontWeight: 700,
+        lineHeight: 1.2,
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
     },
     gridRow: {
         flex: 1,
