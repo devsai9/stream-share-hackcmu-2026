@@ -842,21 +842,34 @@ export default function EditorPage() {
                         <span>{peers.length + 1} Active</span>
                     </div>
                     <div style={{ display: "flex", marginInline: "-4px" }}>
-                        <div
-                            title={localPresence.userName}
-                            aria-label={localPresence.userName}
-                            style={{ ...styles.avatar, background: localPresence.color }}
-                        >
-                            You
+                        <div className="profile-tooltip-wrapper">
+                            <div
+                                className="profile-avatar"
+                                aria-label={localPresence.userName}
+                                role="img"
+                                tabIndex={0}
+                                style={{ ...styles.avatar, background: localPresence.color }}
+                            >
+                                You
+                            </div>
+                            <span className="profile-tooltip" role="tooltip">
+                                {localPresence.userName}
+                            </span>
                         </div>
                         {peers.slice(0, 3).map((peer) => (
-                            <div
-                                key={peer.userId}
-                                title={peer.userName}
-                                aria-label={peer.userName}
-                                style={{ ...styles.avatar, background: peer.color, marginLeft: "-8px" }}
-                            >
-                                {peer.userName.slice(0, 2).toUpperCase()}
+                            <div className="profile-tooltip-wrapper" key={peer.userId}>
+                                <div
+                                    className="profile-avatar"
+                                    aria-label={peer.userName}
+                                    role="img"
+                                    tabIndex={0}
+                                    style={{ ...styles.avatar, background: peer.color, marginLeft: "-8px" }}
+                                >
+                                    {peer.userName.slice(0, 2).toUpperCase()}
+                                </div>
+                                <span className="profile-tooltip" role="tooltip">
+                                    {peer.userName}
+                                </span>
                             </div>
                         ))}
                     </div>

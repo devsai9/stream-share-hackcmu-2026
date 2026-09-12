@@ -58,6 +58,68 @@ body {
     background: var(--accent);
 }
 
+.profile-tooltip-wrapper {
+    position: relative;
+    z-index: 1;
+}
+
+.profile-tooltip-wrapper:focus-within,
+.profile-tooltip-wrapper:hover {
+    z-index: 20;
+}
+
+.profile-avatar {
+    outline: none;
+}
+
+.profile-avatar:focus-visible {
+    box-shadow: 0 0 0 2px var(--accent);
+}
+
+.profile-tooltip {
+    position: absolute;
+    top: calc(100% + 10px);
+    left: 50%;
+    min-width: max-content;
+    max-width: 240px;
+    padding: 7px 10px;
+    border: 1px solid rgb(210 131 42 / 45%);
+    border-radius: 5px;
+    background: rgb(38 12 5 / 96%);
+    box-shadow: 0 8px 20px rgb(0 0 0 / 32%), 0 0 0 1px rgb(255 255 255 / 4%);
+    color: var(--foreground);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, -4px) scale(0.96);
+    transform-origin: top center;
+    transition: opacity 160ms ease, transform 160ms ease, visibility 160ms ease;
+    visibility: hidden;
+    white-space: nowrap;
+}
+
+.profile-tooltip::before {
+    position: absolute;
+    top: -5px;
+    left: 50%;
+    width: 9px;
+    height: 9px;
+    border-top: 1px solid rgb(210 131 42 / 45%);
+    border-left: 1px solid rgb(210 131 42 / 45%);
+    background: rgb(38 12 5 / 96%);
+    content: "";
+    transform: translateX(-50%) rotate(45deg);
+}
+
+.profile-tooltip-wrapper:hover .profile-tooltip,
+.profile-tooltip-wrapper:focus-within .profile-tooltip {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+    visibility: visible;
+}
+
 a {
     color: inherit;
     text-decoration: none;
