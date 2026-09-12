@@ -1813,8 +1813,8 @@ const styles: Record<string, React.CSSProperties> = {
     gridCell: {
         flex: 1,
         border: "none",
-        borderRight: "1px solid rgba(210, 131, 42, 0.035)",
-        borderBottom: "1px solid rgba(152, 49, 9, 0.045)",
+        borderRight: "1px solid rgba(141, 140, 139, 0.3)",
+        borderBottom: "1px solid rgba(141, 140, 139, 0.3)",
         appearance: "none",
         minWidth: 0,
         padding: 0,
