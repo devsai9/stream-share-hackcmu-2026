@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Play, Pause, Square, Mic, Music2, Plus, Users } from "lucide-react";
+import { Play, Pause, Square, Mic, Music2, Plus, Users, Trash2 } from "lucide-react";
 import { getUser } from "../../lib/auth";
 import { getTracks, createTrack, getTrackNotes, replaceTrackNotes, type Track } from "../../lib/editor";
 import { loadProject, type Project } from "../../lib/projects";
@@ -19,6 +19,19 @@ interface DragState {
   rowOffset: number;
 }
 
+interface ResizeState {
+  noteId: string;
+  startStep: number;
+  duration: number;
+  pointerStartStep: number;
+}
+
+interface ClipDragState {
+  trackId: string;
+  pointerStartStep: number;
+  clipStartStep: number;
+}
+
 export default function EditorPage() {
   const searchParams = useSearchParams();
   const projectId = searchParams.get("projectId");
@@ -30,7 +43,12 @@ export default function EditorPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const [resizeState, setResizeState] = useState<ResizeState | null>(null);
+  const [clipDragState, setClipDragState] = useState<ClipDragState | null>(null);
+  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  const [clipStartSteps, setClipStartSteps] = useState<Record<string, number>>({});
   const gridRef = useRef<HTMLDivElement>(null);
+  const timelineRef = useRef<HTMLDivElement>(null);
 
   const {
     isPlaying,
@@ -121,7 +139,7 @@ export default function EditorPage() {
     await replaceTrackNotes(activeTrackId, nextNotes, user.id);
   }, [activeTrackId, user]);
 
-  async function updateNotes(nextNotes: NoteBlock[]) {
+  const updateNotes = useCallback(async (nextNotes: NoteBlock[]) => {
     setNotes(nextNotes);
 
     try {
@@ -130,7 +148,7 @@ export default function EditorPage() {
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Could not save notes.");
     }
-  }
+  }, [broadcastNotes, persistNotes]);
 
   function addNote(pitch: string, startStep: number) {
     const note: NoteBlock = {
@@ -143,6 +161,29 @@ export default function EditorPage() {
 
     void playPreview(note.pitch);
     void updateNotes([...notes, note]);
+  }
+
+  const deleteNote = useCallback((noteId: string) => {
+    setSelectedNoteId(null);
+    void updateNotes(notes.filter((note) => note.id !== noteId));
+  }, [notes, updateNotes]);
+
+  function beginNoteResize(event: React.PointerEvent<HTMLButtonElement>, note: NoteBlock) {
+    const grid = gridRef.current;
+    if (!grid) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = grid.getBoundingClientRect();
+    const stepWidth = rect.width / TOTAL_STEPS;
+    setSelectedNoteId(note.id);
+    setResizeState({
+      noteId: note.id,
+      startStep: note.startStep,
+      duration: note.duration,
+      pointerStartStep: (event.clientX - rect.left) / stepWidth,
+    });
+    event.currentTarget.setPointerCapture(event.pointerId);
   }
 
   function beginNoteDrag(event: React.PointerEvent<HTMLDivElement>, note: NoteBlock) {
@@ -223,6 +264,105 @@ export default function EditorPage() {
       window.removeEventListener("pointerup", finishNoteDrag);
     };
   }, [broadcastNotes, dragState, notes, persistNotes]);
+
+  useEffect(() => {
+    if (!resizeState) return;
+    const activeResize = resizeState;
+
+    function resizeNote(event: PointerEvent) {
+      const grid = gridRef.current;
+      if (!grid) return;
+
+      const rect = grid.getBoundingClientRect();
+      const stepWidth = rect.width / TOTAL_STEPS;
+      const currentStep = (event.clientX - rect.left) / stepWidth;
+      const nextDuration = Math.max(
+        1,
+        Math.min(
+          TOTAL_STEPS - activeResize.startStep,
+          Math.round(activeResize.duration + currentStep - activeResize.pointerStartStep),
+        ),
+      );
+      setNotes((currentNotes) => currentNotes.map((note) =>
+        note.id === activeResize.noteId ? { ...note, duration: nextDuration, isDragging: true } : note,
+      ));
+    }
+
+    function finishResize() {
+      setNotes((currentNotes) => {
+        const finishedNotes = currentNotes.map((note) =>
+          note.id === activeResize.noteId ? { ...note, isDragging: false } : note,
+        );
+        void persistNotes(finishedNotes).catch((saveError) => {
+          setError(saveError instanceof Error ? saveError.message : "Could not save note length.");
+        });
+        void broadcastNotes(finishedNotes);
+        return finishedNotes;
+      });
+      setResizeState(null);
+    }
+
+    window.addEventListener("pointermove", resizeNote);
+    window.addEventListener("pointerup", finishResize, { once: true });
+    return () => {
+      window.removeEventListener("pointermove", resizeNote);
+      window.removeEventListener("pointerup", finishResize);
+    };
+  }, [broadcastNotes, persistNotes, resizeState]);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.key === "Backspace" || event.key === "Delete") && selectedNoteId) {
+        event.preventDefault();
+        deleteNote(selectedNoteId);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [deleteNote, selectedNoteId]);
+
+  function beginClipDrag(event: React.PointerEvent<HTMLDivElement>, track: Track) {
+    const timeline = timelineRef.current;
+    if (!timeline) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = timeline.getBoundingClientRect();
+    setActiveTrackId(track.id);
+    setClipDragState({
+      trackId: track.id,
+      pointerStartStep: ((event.clientX - rect.left) / rect.width) * TOTAL_STEPS,
+      clipStartStep: clipStartSteps[track.id] ?? 1,
+    });
+  }
+
+  useEffect(() => {
+    if (!clipDragState) return;
+    const activeClipDrag = clipDragState;
+
+    function moveClip(event: PointerEvent) {
+      const timeline = timelineRef.current;
+      if (!timeline) return;
+      const rect = timeline.getBoundingClientRect();
+      const pointerStep = ((event.clientX - rect.left) / rect.width) * TOTAL_STEPS;
+      const nextStartStep = Math.max(0, Math.min(TOTAL_STEPS - 6, Math.round(
+        activeClipDrag.clipStartStep + pointerStep - activeClipDrag.pointerStartStep,
+      )));
+      setClipStartSteps((current) => ({ ...current, [activeClipDrag.trackId]: nextStartStep }));
+    }
+
+    function finishClipDrag() {
+      setClipDragState(null);
+    }
+
+    window.addEventListener("pointermove", moveClip);
+    window.addEventListener("pointerup", finishClipDrag, { once: true });
+    return () => {
+      window.removeEventListener("pointermove", moveClip);
+      window.removeEventListener("pointerup", finishClipDrag);
+    };
+  }, [clipDragState]);
 
   if (loading) {
     return <main style={styles.statusPage}>Loading editor...</main>;
@@ -319,15 +459,22 @@ export default function EditorPage() {
               </div>
 
               {/* Timeline Track Lane */}
-              <div style={styles.timelineLane}>
+              <div ref={track.id === tracks[0]?.id ? timelineRef : undefined} style={styles.timelineLane}>
                 <div 
+                  onPointerDown={(event) => beginClipDrag(event, track)}
                   style={{ 
                     ...styles.midiClip,
-                    left: "10%",
+                    left: `${((clipStartSteps[track.id] ?? 1) / TOTAL_STEPS) * 100}%`,
                     background: track.position % 2 === 0 ? "var(--secondary)" : "var(--primary)",
+                    outline: activeTrackId === track.id ? "2px solid #e9a82e" : "none",
                   }}
                 >
-                  MIDI Clip
+                  <span style={styles.clipTitle}>MIDI Clip</span>
+                  <span style={styles.clipPattern} aria-hidden="true">
+                    {[2, 4, 1, 5, 3, 6, 4, 2].map((height, index) => (
+                      <i key={index} style={{ ...styles.clipPatternBar, height: `${height * 3}px` }} />
+                    ))}
+                  </span>
                 </div>
               </div>
             </div>
@@ -345,6 +492,15 @@ export default function EditorPage() {
             <button style={{ ...styles.toolButton, ...styles.activeToolButton }} type="button">✎</button>
             <span style={styles.toolbarDivider} />
             <span style={styles.toolbarLabel}>MIDI Notes</span>
+            <button
+              type="button"
+              aria-label="Delete selected note"
+              title="Delete selected note"
+              onClick={() => selectedNoteId && deleteNote(selectedNoteId)}
+              style={{ ...styles.toolButton, opacity: selectedNoteId ? 1 : 0.45 }}
+            >
+              <Trash2 size={14} />
+            </button>
           </div>
           <div style={styles.toolbarGroup}>
             <span style={styles.toolbarLabel}>Snap</span>
@@ -408,6 +564,14 @@ export default function EditorPage() {
                 <div
                   key={note.id}
                   onPointerDown={(event) => beginNoteDrag(event, note)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setSelectedNoteId(note.id);
+                  }}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    deleteNote(note.id);
+                  }}
                   style={{
                     ...styles.noteBlock,
                     top: `${(rowIndex / PITCHES.length) * 100}%`,
@@ -419,10 +583,17 @@ export default function EditorPage() {
                     cursor: note.isDragging ? "grabbing" : "grab",
                     opacity: note.isDragging ? 0.8 : 1,
                     zIndex: 1,
+                    outline: selectedNoteId === note.id ? "2px solid #f5c451" : "none",
                   }}
                 >
                   {note.userId && <span style={styles.userTag}>{note.userId}</span>}
                   {note.pitch}
+                  <button
+                    type="button"
+                    aria-label={`Resize ${note.pitch} note`}
+                    onPointerDown={(event) => beginNoteResize(event, note)}
+                    style={styles.resizeHandle}
+                  />
                 </div>
               );
             })}
@@ -659,8 +830,33 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "8px",
     fontSize: "12px",
     display: "flex",
+    flexDirection: "column",
     alignItems: "center",
+    justifyContent: "center",
     color: "var(--foreground)",
+    cursor: "grab",
+    touchAction: "none",
+    overflow: "hidden",
+  },
+  clipTitle: {
+    alignSelf: "flex-start",
+    fontSize: "10px",
+    fontWeight: 700,
+  },
+  clipPattern: {
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
+    width: "100%",
+    height: "20px",
+    marginTop: "4px",
+  },
+  clipPatternBar: {
+    display: "block",
+    flex: 1,
+    minWidth: "3px",
+    backgroundColor: "rgba(255, 210, 93, 0.9)",
+    borderRadius: "1px",
   },
   addTrackButton: {
     display: "flex",
@@ -747,6 +943,19 @@ const styles: Record<string, React.CSSProperties> = {
     transition: "box-shadow 0.1s",
     touchAction: "none",
     userSelect: "none",
+    overflow: "hidden",
+  },
+  resizeHandle: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: "7px",
+    padding: 0,
+    border: 0,
+    background: "rgba(255, 255, 255, 0.3)",
+    cursor: "ew-resize",
+    opacity: 0.7,
   },
   userTag: {
     fontSize: "8px",
