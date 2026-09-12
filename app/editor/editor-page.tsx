@@ -782,9 +782,11 @@ export default function EditorPage() {
                     Math.round(activeResize.duration + currentStep - activeResize.pointerStartStep),
                 ),
             );
-            setNotes((currentNotes) => currentNotes.map((note) =>
+            const nextNotes = notes.map((note) =>
                 note.id === activeResize.noteId ? { ...note, duration: nextDuration, isDragging: true } : note,
-            ));
+            );
+            setNotes(nextNotes);
+            void broadcastNotes(nextNotes, localPresence, activeResize.noteId);
         }
 
         function finishResize() {
