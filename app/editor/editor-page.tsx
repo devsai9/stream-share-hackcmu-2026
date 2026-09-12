@@ -79,6 +79,7 @@ export default function EditorPage() {
     const [blockNotes, setBlockNotes] = useState<Record<string, NoteBlock[]>>({});
     const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
     const [notes, setNotes] = useState<NoteBlock[]>([]);
+    const [bpmDraft, setBpmDraft] = useState("120");
     const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
     const [loading, setLoading] = useState(true);
     const [creatingTrack, setCreatingTrack] = useState(false);
@@ -199,6 +200,7 @@ export default function EditorPage() {
 
     const applyBpm = useCallback((nextBpm: number) => {
         setBpm(nextBpm);
+        setBpmDraft(String(nextBpm));
         setProject((currentProject) => currentProject
             ? { ...currentProject, bpm: nextBpm }
             : currentProject);
@@ -256,7 +258,7 @@ export default function EditorPage() {
 
                 setUser({ id: userData.user.id, email: userData.user.email });
                 setProject(loadedProject);
-                setBpm(loadedProject.bpm);
+                applyBpm(loadedProject.bpm);
 
                 let loadedTracks = await getTracks(projectId);
                 if (loadedTracks.length === 0) {
@@ -286,7 +288,7 @@ export default function EditorPage() {
         }
 
         void loadEditor();
-    }, [projectId, setBpm]);
+    }, [applyBpm, projectId]);
 
     useEffect(() => {
         if (!activeBlockId) return;
@@ -335,8 +337,11 @@ export default function EditorPage() {
         }
     }, [activeBlockId, broadcastNotes, persistNotes]);
 
-    async function updateBpm(nextBpm: number) {
-        const safeBpm = Math.max(20, Math.min(300, nextBpm));
+    async function updateBpm(nextBpmDraft: string) {
+        const parsedBpm = Number(nextBpmDraft);
+        const safeBpm = Number.isFinite(parsedBpm)
+            ? Math.max(20, Math.min(300, parsedBpm))
+            : bpm;
         applyBpm(safeBpm);
 
         if (!projectId) return;
@@ -889,8 +894,9 @@ export default function EditorPage() {
                             <span style={{ color: "var(--accent)" }}>BPM</span>
                             <input
                                 type="number"
-                                value={bpm}
-                                onChange={(e) => void updateBpm(Number(e.target.value))}
+                                value={bpmDraft}
+                                onChange={(e) => setBpmDraft(e.target.value)}
+                                onBlur={() => void updateBpm(bpmDraft)}
                                 style={styles.bpmInput}
                             />
                         </div>
