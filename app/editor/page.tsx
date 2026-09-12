@@ -42,8 +42,10 @@ interface ResizeState {
 
 interface ClipDragState {
     blockId: string;
+    trackId: string;
     pointerStartStep: number;
     clipStartStep: number;
+    currentStartStep: number;
 }
 
 interface TrackContextMenuState {
@@ -75,9 +77,10 @@ export default function EditorPage() {
     const [clipDragState, setClipDragState] = useState<ClipDragState | null>(null);
     const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
     const gridRef = useRef<HTMLDivElement>(null);
-    const timelineRef = useRef<HTMLDivElement>(null);
+    const clipTimelineRef = useRef<HTMLElement>(null);
     const trackNamesRef = useRef<HTMLDivElement>(null);
     const timelineScrollRef = useRef<HTMLDivElement>(null);
+    const addBlockScrollRef = useRef<HTMLDivElement>(null);
 
     const {
         isPlaying,
@@ -458,19 +461,23 @@ export default function EditorPage() {
     }, [deleteNote, selectedNoteId]);
 
     function beginClipDrag(event: React.PointerEvent<HTMLDivElement>, track: Track, block: MidiBlock) {
-        const timeline = timelineRef.current;
+        const timeline = event.currentTarget.parentElement;
         if (!timeline) return;
 
         event.preventDefault();
         event.stopPropagation();
+        clipTimelineRef.current = timeline;
         const rect = timeline.getBoundingClientRect();
         setActiveTrackId(track.id);
         setActiveBlockId(block.id);
         setClipDragState({
             blockId: block.id,
+            trackId: track.id,
             pointerStartStep: ((event.clientX - rect.left) / rect.width) * TOTAL_STEPS,
             clipStartStep: block.start_step,
+            currentStartStep: block.start_step,
         });
+        event.currentTarget.setPointerCapture(event.pointerId);
     }
 
     useEffect(() => {
@@ -478,26 +485,54 @@ export default function EditorPage() {
         const activeClipDrag = clipDragState;
 
         function moveClip(event: PointerEvent) {
-            const timeline = timelineRef.current;
+            const scrollContainer = timelineScrollRef.current;
+            if (scrollContainer) {
+                const scrollBounds = scrollContainer.getBoundingClientRect();
+                const edgeThreshold = 48;
+                if (event.clientX > scrollBounds.right - edgeThreshold) {
+                    scrollContainer.scrollLeft += 12;
+                } else if (event.clientX < scrollBounds.left + edgeThreshold) {
+                    scrollContainer.scrollLeft -= 12;
+                }
+            }
+
+            const timeline = clipTimelineRef.current;
             if (!timeline) return;
             const rect = timeline.getBoundingClientRect();
             const pointerStep = ((event.clientX - rect.left) / rect.width) * TOTAL_STEPS;
-            const nextStartStep = Math.max(0, Math.min(TOTAL_STEPS - 6, Math.round(
-                activeClipDrag.clipStartStep + pointerStep - activeClipDrag.pointerStartStep,
-            )));
+            const draggedBlock = blocks.find((block) => block.id === activeClipDrag.blockId);
+            if (!draggedBlock) return;
+
+            const nextStartStep = Math.max(
+                0,
+                Math.min(
+                    TOTAL_STEPS - draggedBlock.length_steps,
+                    Math.round(activeClipDrag.clipStartStep + pointerStep - activeClipDrag.pointerStartStep),
+                ),
+            );
+            const nextEndStep = nextStartStep + draggedBlock.length_steps;
+            const overlapsAnotherBlock = blocks.some((block) =>
+                block.track_id === activeClipDrag.trackId &&
+                block.id !== activeClipDrag.blockId &&
+                nextStartStep < block.start_step + block.length_steps &&
+                nextEndStep > block.start_step,
+            );
+
+            if (overlapsAnotherBlock) return;
+
             setBlocks((currentBlocks) => currentBlocks.map((block) =>
                 block.id === activeClipDrag.blockId ? { ...block, start_step: nextStartStep } : block,
             ));
+            setClipDragState((currentState) => currentState
+                ? { ...currentState, currentStartStep: nextStartStep }
+                : currentState);
         }
 
         async function finishClipDrag() {
-            const block = blocks.find((currentBlock) => currentBlock.id === activeClipDrag.blockId);
-            if (block) {
-                try {
-                    await updateMidiBlock(block.id, { start_step: block.start_step });
-                } catch (moveError) {
-                    setError(moveError instanceof Error ? moveError.message : "Could not move MIDI block.");
-                }
+            try {
+                await updateMidiBlock(activeClipDrag.blockId, { start_step: activeClipDrag.currentStartStep });
+            } catch (moveError) {
+                setError(moveError instanceof Error ? moveError.message : "Could not move MIDI block.");
             }
             setClipDragState(null);
         }
@@ -670,6 +705,9 @@ export default function EditorPage() {
                                 if (trackNamesRef.current) {
                                     trackNamesRef.current.scrollTop = event.currentTarget.scrollTop;
                                 }
+                                if (addBlockScrollRef.current) {
+                                    addBlockScrollRef.current.scrollTop = event.currentTarget.scrollTop;
+                                }
                             }}
                             style={styles.timelineScrollColumn}
                         >
@@ -703,11 +741,16 @@ export default function EditorPage() {
                                         backgroundColor: activeTrackId === track.id ? "rgba(255, 255, 255, 0.03)" : "transparent",
                                     }}
                                 >
-                                    <div ref={track.id === tracks[0]?.id ? timelineRef : undefined} style={styles.timelineLane}>
+                                    <div style={styles.timelineLane}>
                                         {blocks.filter((block) => block.track_id === track.id).map((block) => (
                                             <div
                                                 key={block.id}
                                                 onPointerDown={(event) => beginClipDrag(event, track, block)}
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    setActiveTrackId(track.id);
+                                                    setActiveBlockId(block.id);
+                                                }}
                                                 style={{
                                                     ...styles.midiClip,
                                                     left: `${(block.start_step / TOTAL_STEPS) * 100}%`,
@@ -724,6 +767,16 @@ export default function EditorPage() {
                                                 </span>
                                             </div>
                                         ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div style={styles.addBlockColumn}>
+                            <div style={styles.barRulerSpacer} />
+                            <div ref={addBlockScrollRef} style={styles.addBlockScroll}>
+                                {tracks.map((track) => (
+                                    <div key={track.id} style={styles.addBlockRow}>
                                         <button
                                             type="button"
                                             aria-label={`Add MIDI block to ${track.name}`}
@@ -737,8 +790,8 @@ export default function EditorPage() {
                                             <Plus size={13} />
                                         </button>
                                     </div>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
                     </div>
 
@@ -1126,6 +1179,25 @@ const styles: Record<string, React.CSSProperties> = {
         minHeight: 0,
         overflow: "auto",
     },
+    addBlockColumn: {
+        width: "48px",
+        flexShrink: 0,
+        display: "flex",
+        flexDirection: "column",
+        borderLeft: "1px solid var(--secondary-accent)",
+        backgroundColor: "#101214",
+    },
+    addBlockScroll: {
+        flex: 1,
+        minHeight: 0,
+        overflow: "hidden",
+    },
+    addBlockRow: {
+        height: "80px",
+        display: "grid",
+        placeItems: "center",
+        borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+    },
     barRulerSpacer: {
         height: "24px",
         flexShrink: 0,
@@ -1238,10 +1310,6 @@ const styles: Record<string, React.CSSProperties> = {
         overflow: "hidden",
     },
     addBlockButton: {
-        position: "absolute",
-        right: "10px",
-        top: "50%",
-        transform: "translateY(-50%)",
         width: "28px",
         height: "28px",
         display: "grid",
