@@ -667,6 +667,18 @@ export default function EditorPage() {
         void updateNotes(nextNotes);
     }
 
+    function broadcastNoteSelection(noteId: string) {
+        const nextNotes = notes.map((note) => ({
+            ...note,
+            selectedByUserId: note.id === noteId ? user?.id ?? note.selectedByUserId : undefined,
+            selectedByUserColor: note.id === noteId ? localPresence.color : undefined,
+        }));
+
+        setNotes(nextNotes);
+        setSelectedNoteId(noteId);
+        void broadcastNotes(nextNotes);
+    }
+
     function beginNoteResize(event: React.PointerEvent<HTMLButtonElement>, note: NoteBlock) {
         const grid = gridRef.current;
         if (!grid) return;
@@ -1399,7 +1411,7 @@ export default function EditorPage() {
                                             onPointerDown={(event) => beginNoteDrag(event, note)}
                                             onClick={(event) => {
                                                 event.stopPropagation();
-                                                setSelectedNoteId(note.id);
+                                                broadcastNoteSelection(note.id);
                                             }}
                                             onContextMenu={(event) => {
                                                 event.preventDefault();
@@ -1417,13 +1429,15 @@ export default function EditorPage() {
                                                     : "var(--primary)",
                                                 boxShadow: note.isDragging
                                                     ? `0 0 0 2px ${note.movingUserColor ?? "#facc15"}`
-                                                    : "0 2px 4px rgba(0,0,0,0.3)",
+                                                    : note.selectedByUserColor && note.selectedByUserId !== user?.id
+                                                        ? `0 0 0 2px ${note.selectedByUserColor}`
+                                                        : "0 2px 4px rgba(0,0,0,0.3)",
                                                 cursor: note.isDragging ? "grabbing" : "grab",
                                                 opacity: note.isDragging
                                                     ? note.movingUserColor ? 0.58 : 0.8
                                                     : 1,
                                                 zIndex: 1,
-                                                outline: selectedNoteId === note.id ? "2px solid #f5c451" : "none",
+                                                outline: selectedNoteId === note.id ? "2px solid #f5c451" : note.selectedByUserColor && note.selectedByUserId !== user?.id ? `2px solid ${note.selectedByUserColor}` : "none",
                                             }}
                                         >
                                             {note.isDragging && (

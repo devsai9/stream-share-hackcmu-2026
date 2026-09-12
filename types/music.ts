@@ -8,6 +8,8 @@ export interface NoteBlock {
   movingUserId?: string;
   movingUserEmail?: string;
   movingUserColor?: string;
+  selectedByUserId?: string;
+  selectedByUserColor?: string;
 }
 
 export interface PeerPresence {
