@@ -74,6 +74,8 @@ export default function EditorPage() {
     const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
     const gridRef = useRef<HTMLDivElement>(null);
     const timelineRef = useRef<HTMLDivElement>(null);
+    const trackNamesRef = useRef<HTMLDivElement>(null);
+    const timelineScrollRef = useRef<HTMLDivElement>(null);
 
     const {
         isPlaying,
@@ -596,105 +598,130 @@ export default function EditorPage() {
 
                 {/* 2. TRACKS TIMELINE VIEW */}
                 <div style={styles.tracksSection}>
-                    {tracks.map((track) => (
-                        <div
-                            key={track.id}
-                            onClick={() => {
-                                setActiveTrackId(track.id);
-                                setActiveBlockId(blocks.find((block) => block.track_id === track.id)?.id ?? null);
-                            }}
-                            onContextMenu={(event) => {
-                                event.preventDefault();
-                                setTrackContextMenu({ trackId: track.id, x: event.clientX, y: event.clientY });
-                            }}
-                            style={{
-                                ...styles.trackRow,
-                                backgroundColor: activeTrackId === track.id ? "rgba(255, 255, 255, 0.03)" : "transparent"
-                            }}
-                        >
-                            {/* Track Info Side Panel */}
-                            <div
-                                style={{
-                                    ...styles.trackSidePanel,
-                                    backgroundColor: activeTrackId === track.id ? "var(--secondary-accent)" : "transparent"
-                                }}
-                            >
-                                <div style={styles.flexCenterGap2}>
-                                    <Music2 size={14} style={{ color: "var(--accent)" }} />
-                                    {renamingTrackId === track.id ? (
-                                        <input
-                                            autoFocus
-                                            value={renameValue}
-                                            onChange={(event) => setRenameValue(event.target.value)}
-                                            onClick={(event) => event.stopPropagation()}
-                                            onKeyDown={(event) => {
-                                                if (event.key === "Enter") void saveTrackRename(track);
-                                                if (event.key === "Escape") setRenamingTrackId(null);
-                                            }}
-                                            onBlur={() => void saveTrackRename(track)}
-                                            aria-label={`Rename ${track.name}`}
-                                            style={styles.trackNameInput}
-                                        />
-                                    ) : (
-                                        <span style={styles.trackName}>{track.name}</span>
-                                    )}
-                                    <button
-                                        type="button"
-                                        aria-label={`Delete ${track.name}`}
-                                        title="Delete track"
-                                        onClick={(event) => {
-                                            event.stopPropagation();
-                                            void removeTrack(track);
-                                        }}
-                                        disabled={deletingTrackId === track.id}
-                                        style={styles.trackDeleteButton}
-                                    >
-                                        <Trash2 size={13} />
-                                    </button>
-                                </div>
-                                <div style={styles.trackControls}>
-                                    <span>M</span> <span>S</span>
-                                    <input type="range" style={styles.slider} />
-                                </div>
-                            </div>
-
-                            {/* Timeline Track Lane */}
-                            <div ref={track.id === tracks[0]?.id ? timelineRef : undefined} style={styles.timelineLane}>
-                                {blocks.filter((block) => block.track_id === track.id).map((block) => (
-                                    <div
-                                        key={block.id}
-                                        onPointerDown={(event) => beginClipDrag(event, track, block)}
-                                        style={{
-                                            ...styles.midiClip,
-                                            left: `${(block.start_step / TOTAL_STEPS) * 100}%`,
-                                            width: `${(block.length_steps / TOTAL_STEPS) * 100}%`,
-                                            background: track.position % 2 === 0 ? "var(--secondary)" : "var(--primary)",
-                                            outline: activeBlockId === block.id ? "2px solid #e9a82e" : "none",
-                                        }}
-                                    >
-                                        <span style={styles.clipTitle}>{block.name}</span>
-                                        <span style={styles.clipPattern} aria-hidden="true">
-                                            {[2, 4, 1, 5, 3, 6, 4, 2].map((height, index) => (
-                                                <i key={index} style={{ ...styles.clipPatternBar, height: `${height * 3}px` }} />
-                                            ))}
-                                        </span>
-                                    </div>
-                                ))}
-                                <button
-                                    type="button"
-                                    aria-label={`Add MIDI block to ${track.name}`}
-                                    title="Add MIDI block"
-                                    onClick={(event) => {
-                                        event.stopPropagation();
-                                        void addBlock(track);
+                    <div style={styles.tracksViewport}>
+                        <div ref={trackNamesRef} style={styles.trackNamesColumn}>
+                            {tracks.map((track) => (
+                                <div
+                                    key={track.id}
+                                    onClick={() => {
+                                        setActiveTrackId(track.id);
+                                        setActiveBlockId(blocks.find((block) => block.track_id === track.id)?.id ?? null);
                                     }}
-                                    style={styles.addBlockButton}
+                                    onContextMenu={(event) => {
+                                        event.preventDefault();
+                                        setTrackContextMenu({ trackId: track.id, x: event.clientX, y: event.clientY });
+                                    }}
+                                    style={{
+                                        ...styles.trackRow,
+                                        backgroundColor: activeTrackId === track.id ? "var(--secondary-accent)" : "transparent",
+                                    }}
                                 >
-                                    <Plus size={13} />
-                                </button>
-                            </div>
+                                    <div style={styles.trackSidePanel}>
+                                        <div style={styles.flexCenterGap2}>
+                                            <Music2 size={14} style={{ color: "var(--accent)" }} />
+                                            {renamingTrackId === track.id ? (
+                                                <input
+                                                    autoFocus
+                                                    value={renameValue}
+                                                    onChange={(event) => setRenameValue(event.target.value)}
+                                                    onClick={(event) => event.stopPropagation()}
+                                                    onKeyDown={(event) => {
+                                                        if (event.key === "Enter") void saveTrackRename(track);
+                                                        if (event.key === "Escape") setRenamingTrackId(null);
+                                                    }}
+                                                    onBlur={() => void saveTrackRename(track)}
+                                                    aria-label={`Rename ${track.name}`}
+                                                    style={styles.trackNameInput}
+                                                />
+                                            ) : (
+                                                <span style={styles.trackName}>{track.name}</span>
+                                            )}
+                                            <button
+                                                type="button"
+                                                aria-label={`Delete ${track.name}`}
+                                                title="Delete track"
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    void removeTrack(track);
+                                                }}
+                                                disabled={deletingTrackId === track.id}
+                                                style={styles.trackDeleteButton}
+                                            >
+                                                <Trash2 size={13} />
+                                            </button>
+                                        </div>
+                                        <div style={styles.trackControls}>
+                                            <span>M</span> <span>S</span>
+                                            <input type="range" style={styles.slider} />
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
-                    ))}
+
+                        <div
+                            ref={timelineScrollRef}
+                            onScroll={(event) => {
+                                if (trackNamesRef.current) {
+                                    trackNamesRef.current.scrollTop = event.currentTarget.scrollTop;
+                                }
+                            }}
+                            style={styles.timelineScrollColumn}
+                        >
+                            {tracks.map((track) => (
+                                <div
+                                    key={track.id}
+                                    onClick={() => {
+                                        setActiveTrackId(track.id);
+                                        setActiveBlockId(blocks.find((block) => block.track_id === track.id)?.id ?? null);
+                                    }}
+                                    onContextMenu={(event) => {
+                                        event.preventDefault();
+                                        setTrackContextMenu({ trackId: track.id, x: event.clientX, y: event.clientY });
+                                    }}
+                                    style={{
+                                        ...styles.trackRow,
+                                        backgroundColor: activeTrackId === track.id ? "rgba(255, 255, 255, 0.03)" : "transparent",
+                                    }}
+                                >
+                                    <div ref={track.id === tracks[0]?.id ? timelineRef : undefined} style={styles.timelineLane}>
+                                        {blocks.filter((block) => block.track_id === track.id).map((block) => (
+                                            <div
+                                                key={block.id}
+                                                onPointerDown={(event) => beginClipDrag(event, track, block)}
+                                                style={{
+                                                    ...styles.midiClip,
+                                                    left: `${(block.start_step / TOTAL_STEPS) * 100}%`,
+                                                    width: `${(block.length_steps / TOTAL_STEPS) * 100}%`,
+                                                    background: track.position % 2 === 0 ? "var(--secondary)" : "var(--primary)",
+                                                    outline: activeBlockId === block.id ? "2px solid #e9a82e" : "none",
+                                                }}
+                                            >
+                                                <span style={styles.clipTitle}>{block.name}</span>
+                                                <span style={styles.clipPattern} aria-hidden="true">
+                                                    {[2, 4, 1, 5, 3, 6, 4, 2].map((height, index) => (
+                                                        <i key={index} style={{ ...styles.clipPatternBar, height: `${height * 3}px` }} />
+                                                    ))}
+                                                </span>
+                                            </div>
+                                        ))}
+                                        <button
+                                            type="button"
+                                            aria-label={`Add MIDI block to ${track.name}`}
+                                            title="Add MIDI block"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                void addBlock(track);
+                                            }}
+                                            style={styles.addBlockButton}
+                                        >
+                                            <Plus size={13} />
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
 
                     {trackContextMenu && (
                         <div
@@ -1032,14 +1059,35 @@ const styles: Record<string, React.CSSProperties> = {
     },
     tracksSection: {
         height: "30%",
+        minHeight: 0,
         borderBottom: "1px solid var(--secondary-accent)",
         display: "flex",
         flexDirection: "column",
+        overflow: "hidden",
+    },
+    tracksViewport: {
+        flex: 1,
+        minHeight: 0,
+        display: "flex",
+        overflow: "hidden",
+    },
+    trackNamesColumn: {
+        width: "192px",
+        flexShrink: 0,
         overflowY: "auto",
+        overflowX: "hidden",
+        scrollbarWidth: "none",
+    },
+    timelineScrollColumn: {
+        flex: 1,
+        minWidth: 0,
+        minHeight: 0,
+        overflow: "auto",
     },
     trackRow: {
         display: "flex",
         height: "80px",
+        minWidth: "640px",
         borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
         cursor: "pointer",
         transition: "background-color 0.2s",
@@ -1096,7 +1144,8 @@ const styles: Record<string, React.CSSProperties> = {
         accentColor: "var(--primary)",
     },
     timelineLane: {
-        flex: 1,
+        width: "640px",
+        flexShrink: 0,
         position: "relative",
         backgroundColor: "#101214",
         display: "flex",
