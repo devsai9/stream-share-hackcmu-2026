@@ -68,10 +68,53 @@ export async function updateProject(id: string, name: string, description: strin
 }
 
 export async function shareProject(id: string, email: string): Promise<void> {
-    void id;
-    void email;
-    throw new Error(
-        "Sharing by email requires a server-side email-to-user-ID lookup. " +
-        "Add a public profile table or a Supabase RPC before inserting into project_members.",
-    );
+    const { data: userData, error: userError } = await getUser();
+
+    if (userError) {
+        throw userError;
+    }
+
+    if (!userData.user) {
+        throw new Error("You must be signed in to create a project.");
+    }
+
+    const { data: userToShare, error: userToShareError } = await supabase
+        .from("users")
+        .select("id")
+        .eq("email", email)
+        .single();
+
+    if (userToShareError) {
+        throw userToShareError;
+    }
+
+    if (!userToShare) {
+        throw new Error("User not found.");
+    }
+
+    const { error: memberError } = await supabase
+        .from("project_members")
+        .insert({ project_id: id, user_id: userToShare.id });
+
+    if (memberError) {
+        throw memberError;
+    }
+}
+
+export async function loadProject(id: string): Promise<Project> {
+    const { data, error } = await supabase
+        .from("projects")
+        .select("id, name, description")
+        .eq("id", id)
+        .single();
+
+    if (error) {
+        throw error;
+    }
+
+    if (!data) {
+        throw new Error("Project not found.");
+    }
+
+    return data;
 }
