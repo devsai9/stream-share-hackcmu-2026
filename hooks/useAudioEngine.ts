@@ -8,6 +8,7 @@ export interface UseAudioEngineReturn {
   isPlaying: boolean;
   bpm: number;
   currentStep: number;
+  currentTimelineStep: number;
   isLoaded: boolean;
   setBpm: (bpm: number) => void;
   playPreview: (pitch: string, duration?: string) => Promise<void>;
@@ -20,6 +21,7 @@ export function useAudioEngine(initialBpm = 120): UseAudioEngineReturn {
   const [isPlaying, setIsPlaying] = useState(false);
   const [bpm, setBpmState] = useState(initialBpm);
   const [currentStep, setCurrentStep] = useState(-1);
+  const [currentTimelineStep, setCurrentTimelineStep] = useState(-1);
   const [isLoaded, setIsLoaded] = useState(false);
 
   const initialBpmRef = useRef(initialBpm);
@@ -37,9 +39,9 @@ export function useAudioEngine(initialBpm = 120): UseAudioEngineReturn {
     // Set initial getTransport() BPM
     Tone.getTransport().bpm.value = initialBpmRef.current;
     Tone.getTransport().loop = true;
-    // Set loop end to 1 measure (16 sixteenth notes = 4 beats)
+    // Loop over the full 100-bar track timeline.
     Tone.getTransport().loopStart = 0;
-    Tone.getTransport().loopEnd = "1m";
+    Tone.getTransport().loopEnd = "100m";
 
     // Initialize PolySynth for playing chords and multiple tracks
     const synth = new Tone.PolySynth(Tone.Synth, {
@@ -64,9 +66,11 @@ export function useAudioEngine(initialBpm = 120): UseAudioEngineReturn {
     // Set up a repeating 16th-note callback to track the exact current playhead step
     const ticksPerStep = Tone.getTransport().PPQ / 4; // 16th note step tick duration
     const tickEventId = Tone.getTransport().scheduleRepeat(() => {
-      // Calculate current step (0 to 15) precisely from the getTransport()'s ticks
-      const step = Math.floor(Tone.getTransport().ticks / ticksPerStep) % 16;
+      // Track both the local 16-step position and the absolute 100-bar position.
+      const timelineStep = Math.floor(Tone.getTransport().ticks / ticksPerStep) % 400;
+      const step = timelineStep % 16;
       setCurrentStep(step);
+      setCurrentTimelineStep(timelineStep);
     }, "16n");
 
     tickEventIdRef.current = tickEventId;
@@ -129,6 +133,7 @@ export function useAudioEngine(initialBpm = 120): UseAudioEngineReturn {
     Tone.getTransport().stop();
     setIsPlaying(false);
     setCurrentStep(-1);
+    setCurrentTimelineStep(-1);
   }, []);
 
   // 6. Dynamically schedule the sequence of note blocks on the getTransport() timeline
@@ -164,6 +169,7 @@ export function useAudioEngine(initialBpm = 120): UseAudioEngineReturn {
     isPlaying,
     bpm,
     currentStep,
+    currentTimelineStep,
     isLoaded,
     setBpm,
     playPreview,

@@ -76,6 +76,7 @@ export default function EditorPage() {
     const [tracks, setTracks] = useState<Track[]>([]);
     const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
     const [blocks, setBlocks] = useState<MidiBlock[]>([]);
+    const [blockNotes, setBlockNotes] = useState<Record<string, NoteBlock[]>>({});
     const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
     const [notes, setNotes] = useState<NoteBlock[]>([]);
     const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
@@ -101,7 +102,7 @@ export default function EditorPage() {
     const {
         isPlaying,
         bpm,
-        currentStep,
+        currentTimelineStep,
         setBpm,
         playPreview,
         togglePlayback,
@@ -155,7 +156,12 @@ export default function EditorPage() {
             }
             return remainingBlocks;
         });
-    }, [activeTrackId]);
+        setBlockNotes((currentNotes) => Object.fromEntries(
+            Object.entries(currentNotes).filter(([blockId]) =>
+                blocks.every((block) => block.id !== blockId || block.track_id !== trackId),
+            ),
+        ));
+    }, [activeTrackId, blocks]);
 
     const handleBlockAdded = useCallback((block: MidiBlock) => {
         setBlocks((currentBlocks) =>
@@ -163,6 +169,9 @@ export default function EditorPage() {
                 ? currentBlocks
                 : [...currentBlocks, block],
         );
+        setBlockNotes((currentNotes) => (
+            currentNotes[block.id] ? currentNotes : { ...currentNotes, [block.id]: [] }
+        ));
     }, []);
 
     const handleBlockDeleted = useCallback(({ blockId, trackId }: BlockDeletedPayload) => {
@@ -174,6 +183,11 @@ export default function EditorPage() {
                 setNotes([]);
             }
             return remainingBlocks;
+        });
+        setBlockNotes((currentNotes) => {
+            const remainingNotes = { ...currentNotes };
+            delete remainingNotes[blockId];
+            return remainingNotes;
         });
     }, [activeBlockId]);
 
@@ -249,6 +263,10 @@ export default function EditorPage() {
 
                 setTracks(loadedTracks);
                 setBlocks(loadedBlocks);
+                const loadedNotes = await Promise.all(loadedBlocks.map(async (block) => (
+                    [block.id, await getBlockNotes(block.id)] as const
+                )));
+                setBlockNotes(Object.fromEntries(loadedNotes));
                 setActiveTrackId(loadedTracks[0].id);
                 setActiveBlockId(loadedBlocks.find((block) => block.track_id === loadedTracks[0].id)?.id ?? null);
             } catch (loadError) {
@@ -267,7 +285,9 @@ export default function EditorPage() {
 
         async function loadNotes() {
             try {
-                setNotes(await getBlockNotes(blockId));
+                const loadedNotes = await getBlockNotes(blockId);
+                setNotes(loadedNotes);
+                setBlockNotes((currentNotes) => ({ ...currentNotes, [blockId]: loadedNotes }));
             } catch (loadError) {
                 setError(loadError instanceof Error ? loadError.message : "Could not load notes.");
             }
@@ -277,8 +297,14 @@ export default function EditorPage() {
     }, [activeBlockId]);
 
     useEffect(() => {
-        scheduleNotes(notes);
-    }, [notes, scheduleNotes]);
+        const scheduledNotes = blocks.flatMap((block) =>
+            (blockNotes[block.id] ?? []).map((note) => ({
+                ...note,
+                startStep: note.startStep + block.start_step,
+            })),
+        );
+        scheduleNotes(scheduledNotes);
+    }, [blockNotes, blocks, scheduleNotes]);
 
     const persistNotes = useCallback(async (nextNotes: NoteBlock[]) => {
         if (!activeBlockId || !user) return;
@@ -288,6 +314,9 @@ export default function EditorPage() {
 
     const updateNotes = useCallback(async (nextNotes: NoteBlock[]) => {
         setNotes(nextNotes);
+        if (activeBlockId) {
+            setBlockNotes((currentNotes) => ({ ...currentNotes, [activeBlockId]: nextNotes }));
+        }
 
         try {
             await persistNotes(nextNotes);
@@ -295,7 +324,7 @@ export default function EditorPage() {
         } catch (saveError) {
             setError(saveError instanceof Error ? saveError.message : "Could not save notes.");
         }
-    }, [broadcastNotes, persistNotes]);
+    }, [activeBlockId, broadcastNotes, persistNotes]);
 
     function getNotePlacement(pitch: string, startStep: number, endStep: number) {
         const placementStart = Math.min(startStep, endStep);
@@ -396,6 +425,7 @@ export default function EditorPage() {
             const block = await createMidiBlock(track.id, "MIDI Clip", 0, MIDI_TOTAL_STEPS);
             setTracks((currentTracks) => [...currentTracks, track]);
             setBlocks((currentBlocks) => [...currentBlocks, block]);
+            setBlockNotes((currentNotes) => ({ ...currentNotes, [block.id]: [] }));
             setActiveTrackId(track.id);
             setActiveBlockId(block.id);
             await broadcastTrackAdded({ track, block });
@@ -416,6 +446,7 @@ export default function EditorPage() {
         try {
             const block = await createMidiBlock(track.id, `MIDI Clip ${trackBlocks.length + 1}`, startStep, MIDI_TOTAL_STEPS);
             setBlocks((currentBlocks) => [...currentBlocks, block]);
+            setBlockNotes((currentNotes) => ({ ...currentNotes, [block.id]: [] }));
             setActiveTrackId(track.id);
             setActiveBlockId(block.id);
             await broadcastBlockAdded(block);
@@ -496,6 +527,11 @@ export default function EditorPage() {
                 currentBlock.track_id === block.track_id && currentBlock.id !== block.id,
             );
             setBlocks((currentBlocks) => currentBlocks.filter((currentBlock) => currentBlock.id !== block.id));
+            setBlockNotes((currentNotes) => {
+                const remainingNotes = { ...currentNotes };
+                delete remainingNotes[block.id];
+                return remainingNotes;
+            });
 
             if (activeBlockId === block.id) {
                 const nextBlock = remainingTrackBlocks[0];
@@ -998,6 +1034,15 @@ export default function EditorPage() {
                                     }}
                                 >
                                     <div style={styles.timelineLane}>
+                                        {currentTimelineStep >= 0 && (
+                                            <div
+                                                aria-hidden="true"
+                                                style={{
+                                                    ...styles.playhead,
+                                                    left: `${((currentTimelineStep + 0.5) / TRACK_TOTAL_STEPS) * 100}%`,
+                                                }}
+                                            />
+                                        )}
                                         {blocks.filter((block) => block.track_id === track.id).map((block) => (
                                             <div
                                                 key={block.id}
@@ -1171,15 +1216,17 @@ export default function EditorPage() {
                                 ))}
                             </div>
                             <div ref={gridRef} style={styles.gridCanvas}>
-                                {currentStep >= 0 && (
-                                    <div
-                                        aria-hidden="true"
-                                        style={{
-                                            ...styles.playhead,
-                                            left: `${((currentStep + 0.5) / MIDI_TOTAL_STEPS) * 100}%`,
-                                        }}
-                                    />
-                                )}
+                                {activeBlock &&
+                                    currentTimelineStep >= activeBlock.start_step &&
+                                    currentTimelineStep < activeBlock.start_step + activeBlock.length_steps && (
+                                        <div
+                                            aria-hidden="true"
+                                            style={{
+                                                ...styles.playhead,
+                                                left: `${(((currentTimelineStep - activeBlock.start_step) + 0.5) / MIDI_TOTAL_STEPS) * 100}%`,
+                                            }}
+                                        />
+                                    )}
                                 {PITCHES.map((pitch) => (
                                     <div key={pitch} style={styles.gridRow}>
                                         {Array.from({ length: MIDI_TOTAL_STEPS }).map((_, stepIndex) => (
