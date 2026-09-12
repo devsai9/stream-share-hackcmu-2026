@@ -36,6 +36,41 @@ export async function createTrack(
     return data;
 }
 
+export async function renameTrack(trackId: string, name: string): Promise<Track> {
+    const { data, error } = await supabase
+        .from("tracks")
+        .update({ name })
+        .eq("id", trackId)
+        .select("id, project_id, name, position")
+        .single();
+
+    if (error) {
+        throw error;
+    }
+
+    return data;
+}
+
+export async function deleteTrack(trackId: string): Promise<void> {
+    const { error: notesError } = await supabase
+        .from("notes")
+        .delete()
+        .eq("track_id", trackId);
+
+    if (notesError) {
+        throw notesError;
+    }
+
+    const { error: trackError } = await supabase
+        .from("tracks")
+        .delete()
+        .eq("id", trackId);
+
+    if (trackError) {
+        throw trackError;
+    }
+}
+
 export async function getTrackNotes(trackId: string): Promise<NoteBlock[]> {
     const { data, error } = await supabase
         .from("notes")
