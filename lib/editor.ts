@@ -105,6 +105,15 @@ export async function updateMidiBlock(
     return data;
 }
 
+export async function deleteMidiBlock(blockId: string): Promise<void> {
+    const { error } = await supabase
+        .from("midi_blocks")
+        .delete()
+        .eq("id", blockId);
+
+    if (error) throw error;
+}
+
 export async function getBlockNotes(blockId: string): Promise<NoteBlock[]> {
     const { data, error } = await supabase
         .from("notes")

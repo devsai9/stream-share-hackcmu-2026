@@ -12,6 +12,7 @@ import {
     getTrackBlocks,
     createMidiBlock,
     updateMidiBlock,
+    deleteMidiBlock,
     getBlockNotes,
     replaceBlockNotes,
     type MidiBlock,
@@ -41,6 +42,12 @@ interface ResizeState {
     pointerStartStep: number;
 }
 
+interface NoteCreationState {
+    pitch: string;
+    startStep: number;
+    currentStep: number;
+}
+
 interface ClipDragState {
     blockId: string;
     trackId: string;
@@ -51,6 +58,7 @@ interface ClipDragState {
 
 interface TrackContextMenuState {
     trackId: string;
+    blockId?: string;
     x: number;
     y: number;
 }
@@ -69,12 +77,14 @@ export default function EditorPage() {
     const [loading, setLoading] = useState(true);
     const [creatingTrack, setCreatingTrack] = useState(false);
     const [deletingTrackId, setDeletingTrackId] = useState<string | null>(null);
+    const [deletingBlockId, setDeletingBlockId] = useState<string | null>(null);
     const [renamingTrackId, setRenamingTrackId] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState("");
     const [trackContextMenu, setTrackContextMenu] = useState<TrackContextMenuState | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [dragState, setDragState] = useState<DragState | null>(null);
     const [resizeState, setResizeState] = useState<ResizeState | null>(null);
+    const [noteCreationState, setNoteCreationState] = useState<NoteCreationState | null>(null);
     const [clipDragState, setClipDragState] = useState<ClipDragState | null>(null);
     const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
     const gridRef = useRef<HTMLDivElement>(null);
@@ -192,17 +202,73 @@ export default function EditorPage() {
         }
     }, [broadcastNotes, persistNotes]);
 
-    function addNote(pitch: string, startStep: number) {
+    function getNotePlacement(pitch: string, startStep: number, endStep: number) {
+        const placementStart = Math.min(startStep, endStep);
+        const placementEnd = Math.max(startStep, endStep) + 1;
+        const overlapsExistingNote = notes.some((note) =>
+            note.pitch === pitch &&
+            placementStart < note.startStep + note.duration &&
+            placementEnd > note.startStep,
+        );
+
+        return overlapsExistingNote ? null : {
+            startStep: placementStart,
+            duration: placementEnd - placementStart,
+        };
+    }
+
+    function beginNoteCreation(event: React.PointerEvent<HTMLButtonElement>, pitch: string, startStep: number) {
+        event.preventDefault();
+        event.stopPropagation();
+        setNoteCreationState({ pitch, startStep, currentStep: startStep });
+        void playPreview(pitch);
+        event.currentTarget.setPointerCapture(event.pointerId);
+    }
+
+    function updateNoteCreation(event: React.PointerEvent<HTMLButtonElement>) {
+        if (!noteCreationState) return;
+
+        const grid = gridRef.current;
+        if (!grid) return;
+
+        const rect = grid.getBoundingClientRect();
+        const stepWidth = rect.width / MIDI_TOTAL_STEPS;
+        const currentStep = Math.max(
+            0,
+            Math.min(MIDI_TOTAL_STEPS - 1, Math.floor((event.clientX - rect.left) / stepWidth)),
+        );
+        setNoteCreationState((currentState) => currentState
+            ? { ...currentState, currentStep }
+            : currentState);
+    }
+
+    function finishNoteCreation(event: React.PointerEvent<HTMLButtonElement>) {
+        if (!noteCreationState) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        const placement = getNotePlacement(
+            noteCreationState.pitch,
+            noteCreationState.startStep,
+            noteCreationState.currentStep,
+        );
+        setNoteCreationState(null);
+
+        if (!placement) return;
+
         const note: NoteBlock = {
             id: crypto.randomUUID(),
-            pitch,
-            startStep,
-            duration: 1,
+            pitch: noteCreationState.pitch,
+            startStep: placement.startStep,
+            duration: placement.duration,
             userId: user?.id,
         };
 
-        void playPreview(note.pitch);
         void updateNotes([...notes, note]);
+    }
+
+    function cancelNoteCreation() {
+        setNoteCreationState(null);
     }
 
     async function addTrack() {
@@ -299,6 +365,32 @@ export default function EditorPage() {
             setError(deleteError instanceof Error ? deleteError.message : "Could not delete track.");
         } finally {
             setDeletingTrackId(null);
+        }
+    }
+
+    async function removeMidiBlock(block: MidiBlock) {
+        if (deletingBlockId) return;
+
+        setTrackContextMenu(null);
+        setDeletingBlockId(block.id);
+        setError(null);
+
+        try {
+            await deleteMidiBlock(block.id);
+            const remainingTrackBlocks = blocks.filter((currentBlock) =>
+                currentBlock.track_id === block.track_id && currentBlock.id !== block.id,
+            );
+            setBlocks((currentBlocks) => currentBlocks.filter((currentBlock) => currentBlock.id !== block.id));
+
+            if (activeBlockId === block.id) {
+                const nextBlock = remainingTrackBlocks[0];
+                setActiveBlockId(nextBlock?.id ?? null);
+                setNotes([]);
+            }
+        } catch (deleteError) {
+            setError(deleteError instanceof Error ? deleteError.message : "Could not delete MIDI block.");
+        } finally {
+            setDeletingBlockId(null);
         }
     }
 
@@ -766,6 +858,18 @@ export default function EditorPage() {
                                                     setActiveTrackId(track.id);
                                                     setActiveBlockId(block.id);
                                                 }}
+                                                onContextMenu={(event) => {
+                                                    event.preventDefault();
+                                                    event.stopPropagation();
+                                                    setActiveTrackId(track.id);
+                                                    setActiveBlockId(block.id);
+                                                    setTrackContextMenu({
+                                                        trackId: track.id,
+                                                        blockId: block.id,
+                                                        x: event.clientX,
+                                                        y: event.clientY,
+                                                    });
+                                                }}
                                                 style={{
                                                     ...styles.midiClip,
                                                     left: `${(block.start_step / TRACK_TOTAL_STEPS) * 100}%`,
@@ -819,6 +923,24 @@ export default function EditorPage() {
                             {(() => {
                                 const track = tracks.find((item) => item.id === trackContextMenu.trackId);
                                 if (!track) return null;
+                                const block = trackContextMenu.blockId
+                                    ? blocks.find((item) => item.id === trackContextMenu.blockId)
+                                    : null;
+
+                                if (block) {
+                                    return (
+                                        <button
+                                            type="button"
+                                            role="menuitem"
+                                            onClick={() => void removeMidiBlock(block)}
+                                            disabled={deletingBlockId === block.id}
+                                            style={{ ...styles.contextMenuItem, color: "#f87171" }}
+                                        >
+                                            Delete MIDI block
+                                        </button>
+                                    );
+                                }
+
                                 return (
                                     <>
                                         <button type="button" role="menuitem" onClick={() => beginTrackRename(track)} style={styles.contextMenuItem}>
@@ -916,7 +1038,10 @@ export default function EditorPage() {
                                                 key={stepIndex}
                                                 type="button"
                                                 aria-label={`Add ${pitch} at step ${stepIndex + 1}`}
-                                                onClick={() => addNote(pitch, stepIndex)}
+                                                onPointerDown={(event) => beginNoteCreation(event, pitch, stepIndex)}
+                                                onPointerMove={updateNoteCreation}
+                                                onPointerUp={finishNoteCreation}
+                                                onPointerCancel={cancelNoteCreation}
                                                 style={styles.gridCell}
                                             />
                                         ))}
@@ -964,6 +1089,26 @@ export default function EditorPage() {
                                         </div>
                                     );
                                 })}
+                                {noteCreationState && (
+                                    <div
+                                        aria-hidden="true"
+                                        style={{
+                                            ...styles.noteBlock,
+                                            top: `${(PITCHES.indexOf(noteCreationState.pitch) / PITCHES.length) * 100}%`,
+                                            height: `${(1 / PITCHES.length) * 100}%`,
+                                            left: `${(Math.min(noteCreationState.startStep, noteCreationState.currentStep) / MIDI_TOTAL_STEPS) * 100}%`,
+                                            width: `${((Math.abs(noteCreationState.currentStep - noteCreationState.startStep) + 1) / MIDI_TOTAL_STEPS) * 100}%`,
+                                            background: "var(--accent)",
+                                            boxShadow: "0 0 0 2px #facc15",
+                                            opacity: 0.8,
+                                            cursor: "grabbing",
+                                            pointerEvents: "none",
+                                            zIndex: 2,
+                                        }}
+                                    >
+                                        {noteCreationState.pitch}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
