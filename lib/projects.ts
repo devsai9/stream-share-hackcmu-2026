@@ -3,6 +3,36 @@ import { getUser } from "./auth";
 import type { Tables } from "./supabase/supabase";
 
 export type Project = Pick<Tables<"projects">, "id" | "name" | "description" | "bpm">;
+export type ProjectMember = Pick<Tables<"profiles">, "id" | "email">;
+
+export async function getProjectMembers(projectId: string, excludeUserId?: string): Promise<ProjectMember[]> {
+    const { data: memberships, error: membershipError } = await supabase
+        .from("project_members")
+        .select("user_id")
+        .eq("project_id", projectId);
+
+    if (membershipError) {
+        throw membershipError;
+    }
+
+    const userIds = (memberships ?? [])
+        .map((membership) => membership.user_id)
+        .filter((userId) => userId !== excludeUserId);
+
+    if (userIds.length === 0) return [];
+
+    const { data: profiles, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, email")
+        .in("id", userIds)
+        .order("email");
+
+    if (profileError) {
+        throw profileError;
+    }
+
+    return profiles ?? [];
+}
 
 export async function getProjects(): Promise<Project[]> {
     const { data: userData, error: userError } = await getUser();
@@ -121,6 +151,18 @@ export async function shareProject(id: string, userId: string): Promise<void> {
 
     if (memberError) {
         throw memberError;
+    }
+}
+
+export async function removeProjectMember(projectId: string, userId: string): Promise<void> {
+    const { error } = await supabase
+        .from("project_members")
+        .delete()
+        .eq("project_id", projectId)
+        .eq("user_id", userId);
+
+    if (error) {
+        throw error;
     }
 }
 

@@ -375,6 +375,85 @@
     box-shadow: 0 20px 60px rgb(0 0 0 / 45%);
 }
 
+.sharedMembers {
+    display: grid;
+    gap: 0.45rem;
+    max-height: 12rem;
+    overflow-y: auto;
+    border-top: 1px solid var(--secondary);
+    padding-top: 1rem;
+}
+
+.sharedMembersHeader {
+    display: flex;
+    justify-content: space-between;
+    color: var(--accent);
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.sharedMembersEmpty {
+    margin: 0.25rem 0 0;
+    color: rgb(252 250 205 / 62%);
+    font-size: 0.8rem;
+}
+
+.sharedMember {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 0;
+    padding: 0.35rem 0;
+}
+
+.sharedMemberAvatar {
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    flex-shrink: 0;
+    place-items: center;
+    border: 1px solid var(--accent);
+    border-radius: 50%;
+    background: var(--primary);
+    color: var(--foreground);
+    font-size: 0.65rem;
+    font-weight: 800;
+}
+
+.sharedMemberEmail {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    color: var(--foreground);
+    font-size: 0.8rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.removeMemberButton {
+    display: grid;
+    width: 1.75rem;
+    height: 1.75rem;
+    flex-shrink: 0;
+    place-items: center;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #f87171;
+    cursor: pointer;
+}
+
+.removeMemberButton:hover,
+.removeMemberButton:focus-visible {
+    border-color: #f87171;
+    background: rgb(127 36 23 / 55%);
+    outline: none;
+}
+
+.removeMemberButton:disabled {
+    cursor: wait;
+    opacity: 0.5;
+}
+
 .dialogHeader {
     display: flex;
     align-items: flex-start;

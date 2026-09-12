@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Play, Pause, Square, Music2, Plus, Users, Trash2 } from "lucide-react";
 import { getUser } from "../../lib/auth";
@@ -916,6 +917,7 @@ export default function EditorPage() {
 
                 {/* Project Details */}
                 <div style={styles.projectTitle}>
+                    <Image src="/icon.svg" alt="" width={20} height={20} style={styles.projectIcon} />
                     {project?.name ?? "Realtime Session"}
                 </div>
 
@@ -1505,6 +1507,9 @@ const styles: Record<string, React.CSSProperties> = {
     projectTitle: {
         position: "absolute",
         left: "50%",
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
         maxWidth: "40%",
         overflow: "hidden",
         textOverflow: "ellipsis",
@@ -1513,6 +1518,12 @@ const styles: Record<string, React.CSSProperties> = {
         fontSize: "14px",
         fontWeight: 600,
         letterSpacing: "0.025em",
+    },
+    projectIcon: {
+        width: "20px",
+        height: "20px",
+        flexShrink: 0,
+        borderRadius: "5px",
     },
     backButton: {
         padding: "8px",

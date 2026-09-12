@@ -5,7 +5,17 @@ import { useRouter } from "next/navigation";
 import { ArrowUpRight, Ellipsis, LogOut, Music2, Pencil, Plus, Share2, Trash2, X } from "lucide-react";
 
 import { getUidFromEmail, getUser, signOut } from "../../lib/auth";
-import { createProject, deleteProject, getProjects, shareProject, updateProject, type Project } from "../../lib/projects";
+import {
+    createProject,
+    deleteProject,
+    getProjectMembers,
+    getProjects,
+    removeProjectMember,
+    shareProject,
+    updateProject,
+    type Project,
+    type ProjectMember,
+} from "../../lib/projects";
 
 import styles from "./page.module.css";
 
@@ -29,6 +39,9 @@ export default function ProjectsPage() {
     const [shareEmail, setShareEmail] = useState("");
     const [sharing, setSharing] = useState(false);
     const [shareMessage, setShareMessage] = useState<string | null>(null);
+    const [sharedMembers, setSharedMembers] = useState<ProjectMember[]>([]);
+    const [loadingMembers, setLoadingMembers] = useState(false);
+    const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
     const [renameProjectId, setRenameProjectId] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState("");
     const [renaming, setRenaming] = useState(false);
@@ -105,6 +118,7 @@ export default function ProjectsPage() {
             await shareProject(shareProjectId, userId);
             setShareEmail("");
             setShareMessage("Project shared.");
+            await loadSharedMembers(shareProjectId);
         } catch (shareError) {
             setShareMessage(
                 shareError instanceof Error
@@ -114,6 +128,44 @@ export default function ProjectsPage() {
         } finally {
             setSharing(false);
         }
+    }
+
+    async function loadSharedMembers(projectId: string) {
+        setLoadingMembers(true);
+        try {
+            const userData = await getUser();
+            setSharedMembers(await getProjectMembers(projectId, userData.data.user?.id));
+        } catch (membersError) {
+            setShareMessage(
+                membersError instanceof Error
+                    ? membersError.message
+                    : "We could not load the shared people.",
+            );
+        } finally {
+            setLoadingMembers(false);
+        }
+    }
+
+    async function handleRemoveMember(member: ProjectMember) {
+        if (!shareProjectId || removingMemberId) return;
+
+        setRemovingMemberId(member.id);
+        try {
+            await removeProjectMember(shareProjectId, member.id);
+            setSharedMembers((currentMembers) => currentMembers.filter((currentMember) => currentMember.id !== member.id));
+        } catch (removeError) {
+            setShareMessage(
+                removeError instanceof Error
+                    ? removeError.message
+                    : "We could not remove this person from the project.",
+            );
+        } finally {
+            setRemovingMemberId(null);
+        }
+    }
+
+    function getMemberInitials(memberEmail: string) {
+        return memberEmail.slice(0, 2).toUpperCase();
     }
 
     async function handleRenameProject(event: React.FormEvent<HTMLFormElement>) {
@@ -300,6 +352,7 @@ export default function ProjectsPage() {
                                                     setShareProjectId(project.id);
                                                     setOpenMenuProjectId(null);
                                                     setShareMessage(null);
+                                                    void loadSharedMembers(project.id);
                                                 }}
                                             >
                                                 <Share2 size={16} aria-hidden="true" />
@@ -359,6 +412,30 @@ export default function ProjectsPage() {
                                 required
                             />
                         </label>
+                        <div className={styles.sharedMembers}>
+                            <div className={styles.sharedMembersHeader}>
+                                <span>Shared with</span>
+                                <span>{loadingMembers ? "Loading..." : `${sharedMembers.length} people`}</span>
+                            </div>
+                            {!loadingMembers && sharedMembers.length === 0 && (
+                                <p className={styles.sharedMembersEmpty}>No other people have access yet.</p>
+                            )}
+                            {sharedMembers.map((member) => (
+                                <div className={styles.sharedMember} key={member.id}>
+                                    <span className={styles.sharedMemberAvatar}>{getMemberInitials(member.email)}</span>
+                                    <span className={styles.sharedMemberEmail}>{member.email}</span>
+                                    <button
+                                        className={styles.removeMemberButton}
+                                        type="button"
+                                        aria-label={`Remove ${member.email}`}
+                                        onClick={() => void handleRemoveMember(member)}
+                                        disabled={removingMemberId === member.id}
+                                    >
+                                        <X size={15} aria-hidden="true" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
                         <button className={styles.submitButton} type="submit" disabled={sharing}>
                             {sharing ? "Sharing..." : "Share project"}
                         </button>
