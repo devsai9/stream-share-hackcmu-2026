@@ -128,11 +128,44 @@ export default function EditorPage() {
         );
     }, []);
 
-    const { peers, isConnected, broadcastNotes, broadcastTrackAdded } = useRealTimeSync({
+    const handleTrackRenamed = useCallback((renamedTrack: Track) => {
+        setTracks((currentTracks) => currentTracks.map((track) =>
+            track.id === renamedTrack.id ? renamedTrack : track,
+        ));
+    }, []);
+
+    const handleTrackDeleted = useCallback((trackId: string) => {
+        setTracks((currentTracks) => {
+            const remainingTracks = currentTracks.filter((track) => track.id !== trackId);
+            if (activeTrackId === trackId) {
+                setActiveTrackId(remainingTracks[0]?.id ?? null);
+            }
+            return remainingTracks;
+        });
+        setBlocks((currentBlocks) => {
+            const remainingBlocks = currentBlocks.filter((block) => block.track_id !== trackId);
+            if (activeTrackId === trackId) {
+                setActiveBlockId(remainingBlocks[0]?.id ?? null);
+                setNotes([]);
+            }
+            return remainingBlocks;
+        });
+    }, [activeTrackId]);
+
+    const {
+        peers,
+        isConnected,
+        broadcastNotes,
+        broadcastTrackAdded,
+        broadcastTrackRenamed,
+        broadcastTrackDeleted,
+    } = useRealTimeSync({
         roomId: projectId ?? "",
         user: presence ?? { userId: "", userName: "", color: "" },
         onNotesUpdated: setNotes,
         onTrackAdded: handleTrackAdded,
+        onTrackRenamed: handleTrackRenamed,
+        onTrackDeleted: handleTrackDeleted,
     });
 
     useEffect(() => {
@@ -353,6 +386,7 @@ export default function EditorPage() {
                 currentTrack.id === renamedTrack.id ? renamedTrack : currentTrack,
             ));
             setRenamingTrackId(null);
+            await broadcastTrackRenamed(renamedTrack);
         } catch (renameError) {
             setError(renameError instanceof Error ? renameError.message : "Could not rename track.");
         }
@@ -378,6 +412,7 @@ export default function EditorPage() {
                 return remainingTracks;
             });
             setBlocks((currentBlocks) => currentBlocks.filter((block) => block.track_id !== track.id));
+            await broadcastTrackDeleted(track.id);
         } catch (deleteError) {
             setError(deleteError instanceof Error ? deleteError.message : "Could not delete track.");
         } finally {
