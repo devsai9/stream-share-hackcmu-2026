@@ -34,6 +34,30 @@ const TRACK_BAR_COUNT = 100;
 const TRACK_TOTAL_STEPS = TRACK_BAR_COUNT * STEPS_PER_BAR;
 const MIDI_TOTAL_STEPS = 16;
 
+function normalizePitch(pitch: string): string {
+    return pitch.replace(/[♯#b]/g, "");
+}
+
+function getPitchRowIndex(pitch: string): number {
+    return PITCHES.indexOf(normalizePitch(pitch));
+}
+
+function cyclePitchAccidental(pitch: string): string {
+    const match = /^([A-G])([#b]?)(\d)$/.exec(pitch);
+    if (!match) {
+        return pitch;
+    }
+
+    const [, note, accidental, octave] = match;
+    if (!accidental) {
+        return `${note}#${octave}`;
+    }
+    if (accidental === "#") {
+        return `${note}b${octave}`;
+    }
+    return `${note}${octave}`;
+}
+
 interface DragState {
     noteId: string;
     stepOffset: number;
@@ -362,8 +386,9 @@ export default function EditorPage() {
     function getNotePlacement(pitch: string, startStep: number, endStep: number) {
         const placementStart = Math.min(startStep, endStep);
         const placementEnd = Math.max(startStep, endStep) + 1;
+        const normalizedPitch = normalizePitch(pitch);
         const overlapsExistingNote = notes.some((note) =>
-            note.pitch === pitch &&
+            normalizePitch(note.pitch) === normalizedPitch &&
             placementStart < note.startStep + note.duration &&
             placementEnd > note.startStep,
         );
@@ -623,6 +648,14 @@ export default function EditorPage() {
         void updateNotes(notes.filter((note) => note.id !== noteId));
     }, [notes, updateNotes]);
 
+    function cycleNotePitch(noteId: string) {
+        const nextNotes = notes.map((note) =>
+            note.id === noteId ? { ...note, pitch: cyclePitchAccidental(note.pitch) } : note,
+        );
+        setSelectedNoteId(noteId);
+        void updateNotes(nextNotes);
+    }
+
     function beginNoteResize(event: React.PointerEvent<HTMLButtonElement>, note: NoteBlock) {
         const grid = gridRef.current;
         if (!grid) return;
@@ -651,7 +684,7 @@ export default function EditorPage() {
         const stepWidth = rect.width / MIDI_TOTAL_STEPS;
         const rowHeight = rect.height / PITCHES.length;
         const noteLeft = note.startStep * stepWidth;
-        const noteTop = PITCHES.indexOf(note.pitch) * rowHeight;
+        const noteTop = getPitchRowIndex(note.pitch) * rowHeight;
 
         setDragState({
             noteId: note.id,
@@ -1344,7 +1377,7 @@ export default function EditorPage() {
 
                                 {/* Render Draggable Note Blocks */}
                                 {notes.map((note) => {
-                                    const rowIndex = PITCHES.indexOf(note.pitch);
+                                    const rowIndex = getPitchRowIndex(note.pitch);
                                     if (rowIndex === -1) return null;
 
                                     return (
@@ -1357,7 +1390,8 @@ export default function EditorPage() {
                                             }}
                                             onContextMenu={(event) => {
                                                 event.preventDefault();
-                                                deleteNote(note.id);
+                                                event.stopPropagation();
+                                                cycleNotePitch(note.id);
                                             }}
                                             style={{
                                                 ...styles.noteBlock,
@@ -1399,7 +1433,7 @@ export default function EditorPage() {
                                         aria-hidden="true"
                                         style={{
                                             ...styles.noteBlock,
-                                            top: `${(PITCHES.indexOf(noteCreationState.pitch) / PITCHES.length) * 100}%`,
+                                            top: `${(getPitchRowIndex(noteCreationState.pitch) / PITCHES.length) * 100}%`,
                                             height: `${(1 / PITCHES.length) * 100}%`,
                                             left: `${(Math.min(noteCreationState.startStep, noteCreationState.currentStep) / MIDI_TOTAL_STEPS) * 100}%`,
                                             width: `${((Math.abs(noteCreationState.currentStep - noteCreationState.startStep) + 1) / MIDI_TOTAL_STEPS) * 100}%`,
