@@ -20,7 +20,11 @@ import {
 } from "../../lib/editor";
 import { loadProject, type Project } from "../../lib/projects";
 import { useAudioEngine } from "../../hooks/useAudioEngine";
-import { useRealTimeSync, type TrackAddedPayload } from "../../hooks/useRealTimeSync";
+import {
+    useRealTimeSync,
+    type BlockDeletedPayload,
+    type TrackAddedPayload,
+} from "../../hooks/useRealTimeSync";
 import type { NoteBlock, PeerPresence } from "../../types/music";
 
 const PITCHES = ["C5", "B4", "A4", "G4", "F4", "E4", "D4", "C4"];
@@ -152,6 +156,26 @@ export default function EditorPage() {
         });
     }, [activeTrackId]);
 
+    const handleBlockAdded = useCallback((block: MidiBlock) => {
+        setBlocks((currentBlocks) =>
+            currentBlocks.some((currentBlock) => currentBlock.id === block.id)
+                ? currentBlocks
+                : [...currentBlocks, block],
+        );
+    }, []);
+
+    const handleBlockDeleted = useCallback(({ blockId, trackId }: BlockDeletedPayload) => {
+        setBlocks((currentBlocks) => {
+            const remainingBlocks = currentBlocks.filter((block) => block.id !== blockId);
+            if (activeBlockId === blockId) {
+                const nextBlock = remainingBlocks.find((block) => block.track_id === trackId);
+                setActiveBlockId(nextBlock?.id ?? null);
+                setNotes([]);
+            }
+            return remainingBlocks;
+        });
+    }, [activeBlockId]);
+
     const {
         peers,
         isConnected,
@@ -159,6 +183,8 @@ export default function EditorPage() {
         broadcastTrackAdded,
         broadcastTrackRenamed,
         broadcastTrackDeleted,
+        broadcastBlockAdded,
+        broadcastBlockDeleted,
     } = useRealTimeSync({
         roomId: projectId ?? "",
         user: presence ?? { userId: "", userName: "", color: "" },
@@ -166,6 +192,8 @@ export default function EditorPage() {
         onTrackAdded: handleTrackAdded,
         onTrackRenamed: handleTrackRenamed,
         onTrackDeleted: handleTrackDeleted,
+        onBlockAdded: handleBlockAdded,
+        onBlockDeleted: handleBlockDeleted,
     });
 
     useEffect(() => {
@@ -356,6 +384,7 @@ export default function EditorPage() {
             setBlocks((currentBlocks) => [...currentBlocks, block]);
             setActiveTrackId(track.id);
             setActiveBlockId(block.id);
+            await broadcastBlockAdded(block);
         } catch (createError) {
             setError(createError instanceof Error ? createError.message : "Could not create MIDI block.");
         }
@@ -439,6 +468,7 @@ export default function EditorPage() {
                 setActiveBlockId(nextBlock?.id ?? null);
                 setNotes([]);
             }
+            await broadcastBlockDeleted({ blockId: block.id, trackId: block.track_id });
         } catch (deleteError) {
             setError(deleteError instanceof Error ? deleteError.message : "Could not delete MIDI block.");
         } finally {

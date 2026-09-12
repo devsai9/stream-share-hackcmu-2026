@@ -10,10 +10,17 @@ const CURSOR_EVENT = "cursor-moved";
 const TRACK_ADDED_EVENT = "track-added";
 const TRACK_RENAMED_EVENT = "track-renamed";
 const TRACK_DELETED_EVENT = "track-deleted";
+const BLOCK_ADDED_EVENT = "block-added";
+const BLOCK_DELETED_EVENT = "block-deleted";
 
 export interface TrackAddedPayload {
 	track: Track;
 	block: MidiBlock;
+}
+
+export interface BlockDeletedPayload {
+	blockId: string;
+	trackId: string;
 }
 
 export interface UseRealTimeSyncOptions {
@@ -24,6 +31,8 @@ export interface UseRealTimeSyncOptions {
 	onTrackAdded?: (payload: TrackAddedPayload) => void;
 	onTrackRenamed?: (track: Track) => void;
 	onTrackDeleted?: (trackId: string) => void;
+	onBlockAdded?: (block: MidiBlock) => void;
+	onBlockDeleted?: (payload: BlockDeletedPayload) => void;
 }
 
 export interface UseRealTimeSyncReturn {
@@ -34,6 +43,8 @@ export interface UseRealTimeSyncReturn {
 	broadcastTrackAdded: (payload: TrackAddedPayload) => Promise<void>;
 	broadcastTrackRenamed: (track: Track) => Promise<void>;
 	broadcastTrackDeleted: (trackId: string) => Promise<void>;
+	broadcastBlockAdded: (block: MidiBlock) => Promise<void>;
+	broadcastBlockDeleted: (payload: BlockDeletedPayload) => Promise<void>;
 }
 
 /** Syncs ephemeral editor state through one Supabase Realtime channel per room. */
@@ -45,15 +56,33 @@ export function useRealTimeSync({
 	onTrackAdded,
 	onTrackRenamed,
 	onTrackDeleted,
+	onBlockAdded,
+	onBlockDeleted,
 }: UseRealTimeSyncOptions): UseRealTimeSyncReturn {
 	const [peers, setPeers] = useState<PeerPresence[]>([]);
 	const [isConnected, setIsConnected] = useState(false);
 	const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-	const callbacksRef = useRef({ onNotesUpdated, onCursorMoved, onTrackAdded, onTrackRenamed, onTrackDeleted });
+	const callbacksRef = useRef({
+		onNotesUpdated,
+		onCursorMoved,
+		onTrackAdded,
+		onTrackRenamed,
+		onTrackDeleted,
+		onBlockAdded,
+		onBlockDeleted,
+	});
 
 	useEffect(() => {
-		callbacksRef.current = { onNotesUpdated, onCursorMoved, onTrackAdded, onTrackRenamed, onTrackDeleted };
-	}, [onNotesUpdated, onCursorMoved, onTrackAdded, onTrackRenamed, onTrackDeleted]);
+		callbacksRef.current = {
+			onNotesUpdated,
+			onCursorMoved,
+			onTrackAdded,
+			onTrackRenamed,
+			onTrackDeleted,
+			onBlockAdded,
+			onBlockDeleted,
+		};
+	}, [onNotesUpdated, onCursorMoved, onTrackAdded, onTrackRenamed, onTrackDeleted, onBlockAdded, onBlockDeleted]);
 
 	useEffect(() => {
 		if (!roomId || !user.userId) return;
@@ -105,6 +134,23 @@ export function useRealTimeSync({
 			.on("broadcast", { event: TRACK_DELETED_EVENT }, ({ payload }) => {
 				if (payload?.senderId !== user.userId && typeof payload?.trackId === "string") {
 					callbacksRef.current.onTrackDeleted?.(payload.trackId);
+				}
+			})
+			.on("broadcast", { event: BLOCK_ADDED_EVENT }, ({ payload }) => {
+				if (payload?.senderId !== user.userId && payload?.block) {
+					callbacksRef.current.onBlockAdded?.(payload.block as MidiBlock);
+				}
+			})
+			.on("broadcast", { event: BLOCK_DELETED_EVENT }, ({ payload }) => {
+				if (
+					payload?.senderId !== user.userId &&
+					typeof payload?.blockId === "string" &&
+					typeof payload?.trackId === "string"
+				) {
+					callbacksRef.current.onBlockDeleted?.({
+						blockId: payload.blockId,
+						trackId: payload.trackId,
+					});
 				}
 			})
 			.subscribe(async (status) => {
@@ -181,6 +227,28 @@ export function useRealTimeSync({
 		});
 	}, [isConnected, user.userId]);
 
+	const broadcastBlockAdded = useCallback(async (block: MidiBlock) => {
+		const channel = channelRef.current;
+		if (!channel || !isConnected) return;
+
+		await channel.send({
+			type: "broadcast",
+			event: BLOCK_ADDED_EVENT,
+			payload: { senderId: user.userId, block },
+		});
+	}, [isConnected, user.userId]);
+
+	const broadcastBlockDeleted = useCallback(async (payload: BlockDeletedPayload) => {
+		const channel = channelRef.current;
+		if (!channel || !isConnected) return;
+
+		await channel.send({
+			type: "broadcast",
+			event: BLOCK_DELETED_EVENT,
+			payload: { senderId: user.userId, ...payload },
+		});
+	}, [isConnected, user.userId]);
+
 	return {
 		peers,
 		isConnected,
@@ -189,5 +257,7 @@ export function useRealTimeSync({
 		broadcastTrackAdded,
 		broadcastTrackRenamed,
 		broadcastTrackDeleted,
+		broadcastBlockAdded,
+		broadcastBlockDeleted,
 	};
 }
