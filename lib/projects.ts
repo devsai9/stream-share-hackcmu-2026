@@ -93,6 +93,17 @@ export async function updateProjectBpm(id: string, bpm: number): Promise<Project
     return data;
 }
 
+export async function deleteProject(id: string): Promise<void> {
+    const { error } = await supabase
+        .from("projects")
+        .delete()
+        .eq("id", id);
+
+    if (error) {
+        throw error;
+    }
+}
+
 export async function shareProject(id: string, userId: string): Promise<void> {
     const { data: userData, error: userError } = await getUser();
 

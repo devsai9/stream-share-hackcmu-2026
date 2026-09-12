@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, Ellipsis, LogOut, Music2, Plus, Share2, X } from "lucide-react";
+import { ArrowUpRight, Ellipsis, LogOut, Music2, Pencil, Plus, Share2, Trash2, X } from "lucide-react";
 
 import { getUidFromEmail, getUser, signOut } from "../../lib/auth";
-import { createProject, getProjects, shareProject, type Project } from "../../lib/projects";
+import { createProject, deleteProject, getProjects, shareProject, updateProject, type Project } from "../../lib/projects";
 
 import styles from "./page.module.css";
 
@@ -29,6 +29,11 @@ export default function ProjectsPage() {
     const [shareEmail, setShareEmail] = useState("");
     const [sharing, setSharing] = useState(false);
     const [shareMessage, setShareMessage] = useState<string | null>(null);
+    const [renameProjectId, setRenameProjectId] = useState<string | null>(null);
+    const [renameValue, setRenameValue] = useState("");
+    const [renaming, setRenaming] = useState(false);
+    const [deleteProjectTarget, setDeleteProjectTarget] = useState<Project | null>(null);
+    const [deleting, setDeleting] = useState(false);
     const [signingOut, setSigningOut] = useState(false);
 
     useEffect(() => {
@@ -108,6 +113,52 @@ export default function ProjectsPage() {
             );
         } finally {
             setSharing(false);
+        }
+    }
+
+    async function handleRenameProject(event: React.FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        const project = projects.find((item) => item.id === renameProjectId);
+        const name = renameValue.trim();
+        if (!project || !name) return;
+
+        setRenaming(true);
+
+        try {
+            const renamedProject = await updateProject(project.id, name, project.description || "");
+            setProjects((currentProjects) => currentProjects.map((currentProject) =>
+                currentProject.id === renamedProject.id ? renamedProject : currentProject,
+            ));
+            setRenameProjectId(null);
+        } catch (renameError) {
+            setError(
+                renameError instanceof Error
+                    ? renameError.message
+                    : "We could not rename the project. Please try again.",
+            );
+        } finally {
+            setRenaming(false);
+        }
+    }
+
+    async function handleDeleteProject() {
+        if (!deleteProjectTarget) return;
+        const project = deleteProjectTarget;
+        setDeleting(true);
+
+        try {
+            await deleteProject(project.id);
+            setProjects((currentProjects) => currentProjects.filter((currentProject) => currentProject.id !== project.id));
+            setOpenMenuProjectId(null);
+            setDeleteProjectTarget(null);
+        } catch (deleteError) {
+            setError(
+                deleteError instanceof Error
+                    ? deleteError.message
+                    : "We could not delete the project. Please try again.",
+            );
+        } finally {
+            setDeleting(false);
         }
     }
 
@@ -254,6 +305,29 @@ export default function ProjectsPage() {
                                                 <Share2 size={16} aria-hidden="true" />
                                                 Share project
                                             </button>
+                                            <button
+                                                className={styles.menuItem}
+                                                type="button"
+                                                onClick={() => {
+                                                    setOpenMenuProjectId(null);
+                                                    setRenameValue(project.name);
+                                                    setRenameProjectId(project.id);
+                                                }}
+                                            >
+                                                <Pencil size={16} aria-hidden="true" />
+                                                Rename project
+                                            </button>
+                                            <button
+                                                className={`${styles.menuItem} ${styles.deleteMenuItem}`}
+                                                type="button"
+                                                onClick={() => {
+                                                    setOpenMenuProjectId(null);
+                                                    setDeleteProjectTarget(project);
+                                                }}
+                                            >
+                                                <Trash2 size={16} aria-hidden="true" />
+                                                Delete project
+                                            </button>
                                         </div>
                                     )}
                                 </article>
@@ -290,6 +364,60 @@ export default function ProjectsPage() {
                         </button>
                         {shareMessage && <p className={styles.formError}>{shareMessage}</p>}
                     </form>
+                </div>
+            )}
+            {renameProjectId && (
+                <div className={styles.dialogBackdrop} onClick={() => !renaming && setRenameProjectId(null)}>
+                    <form className={styles.shareDialog} onSubmit={handleRenameProject} onClick={(event) => event.stopPropagation()}>
+                        <div className={styles.dialogHeader}>
+                            <div>
+                                <p className={styles.eyebrow}>Project settings</p>
+                                <h2>Rename project</h2>
+                            </div>
+                            <button className={styles.closeButton} type="button" aria-label="Close rename dialog" onClick={() => setRenameProjectId(null)} disabled={renaming}>
+                                <X size={18} aria-hidden="true" />
+                            </button>
+                        </div>
+                        <label className={styles.formField}>
+                            <span>Project name</span>
+                            <input
+                                type="text"
+                                value={renameValue}
+                                onChange={(event) => setRenameValue(event.target.value)}
+                                autoFocus
+                                required
+                            />
+                        </label>
+                        <button className={styles.submitButton} type="submit" disabled={renaming}>
+                            {renaming ? "Renaming..." : "Rename project"}
+                        </button>
+                    </form>
+                </div>
+            )}
+            {deleteProjectTarget && (
+                <div className={styles.dialogBackdrop} onClick={() => !deleting && setDeleteProjectTarget(null)}>
+                    <div className={styles.shareDialog} role="alertdialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+                        <div className={styles.dialogHeader}>
+                            <div>
+                                <p className={styles.eyebrow}>Destructive action</p>
+                                <h2>Delete project?</h2>
+                            </div>
+                            <button className={styles.closeButton} type="button" aria-label="Close delete dialog" onClick={() => setDeleteProjectTarget(null)} disabled={deleting}>
+                                <X size={18} aria-hidden="true" />
+                            </button>
+                        </div>
+                        <p className={styles.dialogMessage}>
+                            This will permanently delete <strong>{deleteProjectTarget.name}</strong> and its session data.
+                        </p>
+                        <div className={styles.dialogActions}>
+                            <button className={styles.cancelButton} type="button" onClick={() => setDeleteProjectTarget(null)} disabled={deleting}>
+                                Cancel
+                            </button>
+                            <button className={styles.deleteButton} type="button" onClick={() => void handleDeleteProject()} disabled={deleting}>
+                                {deleting ? "Deleting..." : "Delete project"}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </main>

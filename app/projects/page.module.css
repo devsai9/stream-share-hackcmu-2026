@@ -351,6 +351,10 @@
     outline: none;
 }
 
+.deleteMenuItem {
+    color: #f87171;
+}
+
 .dialogBackdrop {
     position: fixed;
     z-index: 10;
@@ -401,6 +405,57 @@
     border-color: var(--accent);
     color: var(--accent);
     outline: none;
+}
+
+.dialogMessage {
+    margin: 0;
+    color: var(--accent);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.dialogActions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.65rem;
+}
+
+.cancelButton,
+.deleteButton {
+    border: 1px solid var(--secondary);
+    padding: 0.65rem 0.85rem;
+    background: transparent;
+    color: var(--foreground);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.cancelButton:hover,
+.cancelButton:focus-visible {
+    border-color: var(--accent);
+    color: var(--accent);
+    outline: none;
+}
+
+.deleteButton {
+    border-color: #b33a27;
+    background: #7f2417;
+}
+
+.deleteButton:hover,
+.deleteButton:focus-visible {
+    border-color: #f87171;
+    background: #a83220;
+    outline: none;
+}
+
+.cancelButton:disabled,
+.deleteButton:disabled,
+.closeButton:disabled {
+    cursor: wait;
+    opacity: 0.6;
 }
 
 .status,

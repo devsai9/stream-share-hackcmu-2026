@@ -83,6 +83,8 @@ export default function EditorPage() {
     const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
     const [loading, setLoading] = useState(true);
     const [creatingTrack, setCreatingTrack] = useState(false);
+    const [showTrackDialog, setShowTrackDialog] = useState(false);
+    const [newTrackName, setNewTrackName] = useState("");
     const [deletingTrackId, setDeletingTrackId] = useState<string | null>(null);
     const [deletingBlockId, setDeletingBlockId] = useState<string | null>(null);
     const [renamingTrackId, setRenamingTrackId] = useState<string | null>(null);
@@ -442,7 +444,15 @@ export default function EditorPage() {
     async function addTrack() {
         if (!projectId || creatingTrack) return;
 
-        const trackName = window.prompt("Track name", `Track ${tracks.length + 1}`)?.trim();
+        setNewTrackName(`Track ${tracks.length + 1}`);
+        setShowTrackDialog(true);
+    }
+
+    async function createTrackFromDialog(event: React.FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (!projectId || creatingTrack) return;
+
+        const trackName = newTrackName.trim();
         if (!trackName) return;
 
         setCreatingTrack(true);
@@ -457,6 +467,7 @@ export default function EditorPage() {
             setActiveTrackId(track.id);
             setActiveBlockId(block.id);
             await broadcastTrackAdded({ track, block });
+            setShowTrackDialog(false);
         } catch (createError) {
             setError(createError instanceof Error ? createError.message : "Could not create track.");
         } finally {
@@ -1352,7 +1363,40 @@ export default function EditorPage() {
                 </div>
 
             </div>
-            {error && <div style={styles.errorBanner}>{error}</div>}
+            {showTrackDialog && (
+                <div style={styles.dialogBackdrop} onClick={() => !creatingTrack && setShowTrackDialog(false)}>
+                    <form style={styles.editorDialog} onSubmit={createTrackFromDialog} onClick={(event) => event.stopPropagation()}>
+                        <div style={styles.dialogHeader}>
+                            <div>
+                                <p style={styles.dialogEyebrow}>Track setup</p>
+                                <h2 style={styles.dialogTitle}>Add track</h2>
+                            </div>
+                            <button
+                                type="button"
+                                aria-label="Close add track dialog"
+                                onClick={() => setShowTrackDialog(false)}
+                                disabled={creatingTrack}
+                                style={styles.dialogCloseButton}
+                            >
+                                <span aria-hidden="true">×</span>
+                            </button>
+                        </div>
+                        <label style={styles.dialogField}>
+                            <span>Track name</span>
+                            <input
+                                type="text"
+                                value={newTrackName}
+                                onChange={(event) => setNewTrackName(event.target.value)}
+                                autoFocus
+                                required
+                            />
+                        </label>
+                        <button type="submit" disabled={creatingTrack} style={styles.dialogSubmitButton}>
+                            {creatingTrack ? "Adding..." : "Add track"}
+                        </button>
+                    </form>
+                </div>
+            )}
         </div>
     );
 }
@@ -1366,16 +1410,71 @@ const styles: Record<string, React.CSSProperties> = {
         background: "var(--background)",
         color: "var(--foreground)",
     },
-    errorBanner: {
+    dialogBackdrop: {
         position: "fixed",
-        right: "16px",
-        bottom: "16px",
-        maxWidth: "360px",
-        padding: "10px 14px",
-        border: "1px solid #ef4444",
-        background: "rgba(40, 8, 4, 0.95)",
+        zIndex: 20,
+        inset: 0,
+        display: "grid",
+        placeItems: "center",
+        padding: "20px",
+        background: "rgba(16, 5, 2, 0.78)",
+    },
+    editorDialog: {
+        display: "grid",
+        width: "min(100%, 420px)",
+        gap: "20px",
+        border: "1px solid var(--secondary)",
+        padding: "24px",
+        background: "var(--secondary-accent)",
+        boxShadow: "0 20px 60px rgba(0, 0, 0, 0.45)",
+    },
+    dialogHeader: {
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "space-between",
+        gap: "16px",
+    },
+    dialogEyebrow: {
+        margin: "0 0 8px",
+        color: "var(--accent)",
+        fontSize: "10px",
+        fontWeight: 700,
+        letterSpacing: "0.12em",
+        textTransform: "uppercase",
+    },
+    dialogTitle: {
+        margin: 0,
         color: "var(--foreground)",
+        fontFamily: "Georgia, serif",
+        fontSize: "28px",
+        fontWeight: 500,
+    },
+    dialogCloseButton: {
+        width: "32px",
+        height: "32px",
+        border: "1px solid var(--secondary)",
+        background: "transparent",
+        color: "var(--foreground)",
+        cursor: "pointer",
+        fontSize: "22px",
+        lineHeight: 1,
+    },
+    dialogField: {
+        display: "grid",
+        gap: "6px",
+        color: "var(--accent)",
         fontSize: "12px",
+        fontWeight: 700,
+    },
+    dialogSubmitButton: {
+        border: "1px solid var(--primary)",
+        padding: "10px 14px",
+        background: "var(--primary)",
+        color: "var(--foreground)",
+        cursor: "pointer",
+        font: "inherit",
+        fontSize: "12px",
+        fontWeight: 700,
     },
     pageContainer: {
         display: "flex",
