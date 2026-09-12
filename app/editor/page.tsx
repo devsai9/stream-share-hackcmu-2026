@@ -24,6 +24,8 @@ import type { NoteBlock, PeerPresence } from "../../types/music";
 
 const PITCHES = ["C5", "B4", "A4", "G4", "F4", "E4", "D4", "C4"];
 const TOTAL_STEPS = 16;
+const STEPS_PER_BAR = 4;
+const BAR_COUNT = TOTAL_STEPS / STEPS_PER_BAR;
 
 interface DragState {
     noteId: string;
@@ -599,64 +601,67 @@ export default function EditorPage() {
                 {/* 2. TRACKS TIMELINE VIEW */}
                 <div style={styles.tracksSection}>
                     <div style={styles.tracksViewport}>
-                        <div ref={trackNamesRef} style={styles.trackNamesColumn}>
-                            {tracks.map((track) => (
-                                <div
-                                    key={track.id}
-                                    onClick={() => {
-                                        setActiveTrackId(track.id);
-                                        setActiveBlockId(blocks.find((block) => block.track_id === track.id)?.id ?? null);
-                                    }}
-                                    onContextMenu={(event) => {
-                                        event.preventDefault();
-                                        setTrackContextMenu({ trackId: track.id, x: event.clientX, y: event.clientY });
-                                    }}
-                                    style={{
-                                        ...styles.trackRow,
-                                        backgroundColor: activeTrackId === track.id ? "var(--secondary-accent)" : "transparent",
-                                    }}
-                                >
-                                    <div style={styles.trackSidePanel}>
-                                        <div style={styles.flexCenterGap2}>
-                                            <Music2 size={14} style={{ color: "var(--accent)" }} />
-                                            {renamingTrackId === track.id ? (
-                                                <input
-                                                    autoFocus
-                                                    value={renameValue}
-                                                    onChange={(event) => setRenameValue(event.target.value)}
-                                                    onClick={(event) => event.stopPropagation()}
-                                                    onKeyDown={(event) => {
-                                                        if (event.key === "Enter") void saveTrackRename(track);
-                                                        if (event.key === "Escape") setRenamingTrackId(null);
+                        <div style={styles.trackNamesColumn}>
+                            <div style={styles.barRulerSpacer} />
+                            <div ref={trackNamesRef} style={styles.trackNamesScroll}>
+                                {tracks.map((track) => (
+                                    <div
+                                        key={track.id}
+                                        onClick={() => {
+                                            setActiveTrackId(track.id);
+                                            setActiveBlockId(blocks.find((block) => block.track_id === track.id)?.id ?? null);
+                                        }}
+                                        onContextMenu={(event) => {
+                                            event.preventDefault();
+                                            setTrackContextMenu({ trackId: track.id, x: event.clientX, y: event.clientY });
+                                        }}
+                                        style={{
+                                            ...styles.trackRow,
+                                            backgroundColor: activeTrackId === track.id ? "var(--secondary-accent)" : "transparent",
+                                        }}
+                                    >
+                                        <div style={styles.trackSidePanel}>
+                                            <div style={styles.flexCenterGap2}>
+                                                <Music2 size={14} style={{ color: "var(--accent)" }} />
+                                                {renamingTrackId === track.id ? (
+                                                    <input
+                                                        autoFocus
+                                                        value={renameValue}
+                                                        onChange={(event) => setRenameValue(event.target.value)}
+                                                        onClick={(event) => event.stopPropagation()}
+                                                        onKeyDown={(event) => {
+                                                            if (event.key === "Enter") void saveTrackRename(track);
+                                                            if (event.key === "Escape") setRenamingTrackId(null);
+                                                        }}
+                                                        onBlur={() => void saveTrackRename(track)}
+                                                        aria-label={`Rename ${track.name}`}
+                                                        style={styles.trackNameInput}
+                                                    />
+                                                ) : (
+                                                    <span style={styles.trackName}>{track.name}</span>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    aria-label={`Delete ${track.name}`}
+                                                    title="Delete track"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        void removeTrack(track);
                                                     }}
-                                                    onBlur={() => void saveTrackRename(track)}
-                                                    aria-label={`Rename ${track.name}`}
-                                                    style={styles.trackNameInput}
-                                                />
-                                            ) : (
-                                                <span style={styles.trackName}>{track.name}</span>
-                                            )}
-                                            <button
-                                                type="button"
-                                                aria-label={`Delete ${track.name}`}
-                                                title="Delete track"
-                                                onClick={(event) => {
-                                                    event.stopPropagation();
-                                                    void removeTrack(track);
-                                                }}
-                                                disabled={deletingTrackId === track.id}
-                                                style={styles.trackDeleteButton}
-                                            >
-                                                <Trash2 size={13} />
-                                            </button>
-                                        </div>
-                                        <div style={styles.trackControls}>
-                                            <span>M</span> <span>S</span>
-                                            <input type="range" style={styles.slider} />
+                                                    disabled={deletingTrackId === track.id}
+                                                    style={styles.trackDeleteButton}
+                                                >
+                                                    <Trash2 size={13} />
+                                                </button>
+                                            </div>
+                                            <div style={styles.trackControls}>
+                                                <span>M</span> <span>S</span>
+                                                <input type="range" style={styles.slider} />
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
 
                         <div
@@ -668,6 +673,20 @@ export default function EditorPage() {
                             }}
                             style={styles.timelineScrollColumn}
                         >
+                            <div style={styles.barRuler}>
+                                {Array.from({ length: BAR_COUNT }).map((_, barIndex) => (
+                                    <div
+                                        key={barIndex}
+                                        style={{
+                                            ...styles.barNumber,
+                                            left: `${(barIndex / BAR_COUNT) * 100}%`,
+                                            width: `${(1 / BAR_COUNT) * 100}%`,
+                                        }}
+                                    >
+                                        {barIndex + 1}
+                                    </div>
+                                ))}
+                            </div>
                             {tracks.map((track) => (
                                 <div
                                     key={track.id}
@@ -796,73 +815,90 @@ export default function EditorPage() {
                         ))}
                     </div>
 
-                    {/* Piano Grid Canvas */}
-                    <div ref={gridRef} style={styles.gridCanvas}>
-                        {currentStep >= 0 && (
-                            <div
-                                aria-hidden="true"
-                                style={{
-                                    ...styles.playhead,
-                                    left: `${((currentStep + 0.5) / TOTAL_STEPS) * 100}%`,
-                                }}
-                            />
-                        )}
-                        {PITCHES.map((pitch) => (
-                            <div key={pitch} style={styles.gridRow}>
-                                {Array.from({ length: TOTAL_STEPS }).map((_, stepIndex) => (
-                                    <button
-                                        key={stepIndex}
-                                        type="button"
-                                        aria-label={`Add ${pitch} at step ${stepIndex + 1}`}
-                                        onClick={() => addNote(pitch, stepIndex)}
-                                        style={styles.gridCell}
-                                    />
+                    <div style={styles.gridScrollViewport}>
+                        <div style={styles.gridContent}>
+                            <div style={styles.barRuler}>
+                                {Array.from({ length: BAR_COUNT }).map((_, barIndex) => (
+                                    <div
+                                        key={barIndex}
+                                        style={{
+                                            ...styles.barNumber,
+                                            left: `${(barIndex / BAR_COUNT) * 100}%`,
+                                            width: `${(1 / BAR_COUNT) * 100}%`,
+                                        }}
+                                    >
+                                        {barIndex + 1}
+                                    </div>
                                 ))}
                             </div>
-                        ))}
-
-                        {/* Render Draggable Note Blocks */}
-                        {notes.map((note) => {
-                            const rowIndex = PITCHES.indexOf(note.pitch);
-                            if (rowIndex === -1) return null;
-
-                            return (
-                                <div
-                                    key={note.id}
-                                    onPointerDown={(event) => beginNoteDrag(event, note)}
-                                    onClick={(event) => {
-                                        event.stopPropagation();
-                                        setSelectedNoteId(note.id);
-                                    }}
-                                    onContextMenu={(event) => {
-                                        event.preventDefault();
-                                        deleteNote(note.id);
-                                    }}
-                                    style={{
-                                        ...styles.noteBlock,
-                                        top: `${(rowIndex / PITCHES.length) * 100}%`,
-                                        height: `${(1 / PITCHES.length) * 100}%`,
-                                        left: `${(note.startStep / TOTAL_STEPS) * 100}%`,
-                                        width: `${(note.duration / TOTAL_STEPS) * 100}%`,
-                                        background: note.isDragging ? "var(--accent)" : "var(--primary)",
-                                        boxShadow: note.isDragging ? "0 0 0 2px #facc15" : "0 2px 4px rgba(0,0,0,0.3)",
-                                        cursor: note.isDragging ? "grabbing" : "grab",
-                                        opacity: note.isDragging ? 0.8 : 1,
-                                        zIndex: 1,
-                                        outline: selectedNoteId === note.id ? "2px solid #f5c451" : "none",
-                                    }}
-                                >
-                                    {note.userId && <span style={styles.userTag}>{note.userId}</span>}
-                                    {note.pitch}
-                                    <button
-                                        type="button"
-                                        aria-label={`Resize ${note.pitch} note`}
-                                        onPointerDown={(event) => beginNoteResize(event, note)}
-                                        style={styles.resizeHandle}
+                            <div ref={gridRef} style={styles.gridCanvas}>
+                                {currentStep >= 0 && (
+                                    <div
+                                        aria-hidden="true"
+                                        style={{
+                                            ...styles.playhead,
+                                            left: `${((currentStep + 0.5) / TOTAL_STEPS) * 100}%`,
+                                        }}
                                     />
-                                </div>
-                            );
-                        })}
+                                )}
+                                {PITCHES.map((pitch) => (
+                                    <div key={pitch} style={styles.gridRow}>
+                                        {Array.from({ length: TOTAL_STEPS }).map((_, stepIndex) => (
+                                            <button
+                                                key={stepIndex}
+                                                type="button"
+                                                aria-label={`Add ${pitch} at step ${stepIndex + 1}`}
+                                                onClick={() => addNote(pitch, stepIndex)}
+                                                style={styles.gridCell}
+                                            />
+                                        ))}
+                                    </div>
+                                ))}
+
+                                {/* Render Draggable Note Blocks */}
+                                {notes.map((note) => {
+                                    const rowIndex = PITCHES.indexOf(note.pitch);
+                                    if (rowIndex === -1) return null;
+
+                                    return (
+                                        <div
+                                            key={note.id}
+                                            onPointerDown={(event) => beginNoteDrag(event, note)}
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                setSelectedNoteId(note.id);
+                                            }}
+                                            onContextMenu={(event) => {
+                                                event.preventDefault();
+                                                deleteNote(note.id);
+                                            }}
+                                            style={{
+                                                ...styles.noteBlock,
+                                                top: `${(rowIndex / PITCHES.length) * 100}%`,
+                                                height: `${(1 / PITCHES.length) * 100}%`,
+                                                left: `${(note.startStep / TOTAL_STEPS) * 100}%`,
+                                                width: `${(note.duration / TOTAL_STEPS) * 100}%`,
+                                                background: note.isDragging ? "var(--accent)" : "var(--primary)",
+                                                boxShadow: note.isDragging ? "0 0 0 2px #facc15" : "0 2px 4px rgba(0,0,0,0.3)",
+                                                cursor: note.isDragging ? "grabbing" : "grab",
+                                                opacity: note.isDragging ? 0.8 : 1,
+                                                zIndex: 1,
+                                                outline: selectedNoteId === note.id ? "2px solid #f5c451" : "none",
+                                            }}
+                                        >
+                                            {note.userId && <span style={styles.userTag}>{note.userId}</span>}
+                                            {note.pitch}
+                                            <button
+                                                type="button"
+                                                aria-label={`Resize ${note.pitch} note`}
+                                                onPointerDown={(event) => beginNoteResize(event, note)}
+                                                style={styles.resizeHandle}
+                                            />
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
                     </div>
 
                 </div>
@@ -1074,6 +1110,12 @@ const styles: Record<string, React.CSSProperties> = {
     trackNamesColumn: {
         width: "192px",
         flexShrink: 0,
+        display: "flex",
+        flexDirection: "column",
+    },
+    trackNamesScroll: {
+        flex: 1,
+        minHeight: 0,
         overflowY: "auto",
         overflowX: "hidden",
         scrollbarWidth: "none",
@@ -1083,6 +1125,33 @@ const styles: Record<string, React.CSSProperties> = {
         minWidth: 0,
         minHeight: 0,
         overflow: "auto",
+    },
+    barRulerSpacer: {
+        height: "24px",
+        flexShrink: 0,
+        borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+        backgroundColor: "#111315",
+    },
+    barRuler: {
+        position: "relative",
+        width: "640px",
+        height: "24px",
+        flexShrink: 0,
+        borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+        backgroundColor: "#111315",
+    },
+    barNumber: {
+        position: "absolute",
+        top: 0,
+        bottom: 0,
+        display: "flex",
+        alignItems: "center",
+        paddingLeft: "6px",
+        borderLeft: "1px solid rgba(255, 255, 255, 0.18)",
+        color: "#b5bac2",
+        fontFamily: "monospace",
+        fontSize: "10px",
+        fontWeight: 700,
     },
     trackRow: {
         display: "flex",
@@ -1251,6 +1320,20 @@ const styles: Record<string, React.CSSProperties> = {
         flexDirection: "column",
         backgroundColor: "#111315",
     },
+    gridScrollViewport: {
+        flex: 1,
+        minWidth: 0,
+        minHeight: 0,
+        overflow: "auto",
+    },
+    gridContent: {
+        width: "100%",
+        minWidth: "640px",
+        height: "100%",
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+    },
     pianoKey: {
         flex: 1,
         borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
@@ -1265,11 +1348,10 @@ const styles: Record<string, React.CSSProperties> = {
     },
     gridCanvas: {
         flex: 1,
+        minHeight: 0,
         position: "relative",
-        overflowX: "auto",
         display: "flex",
         flexDirection: "column",
-        minWidth: "640px",
         backgroundColor: "#1a1c1e",
     },
     playhead: {
