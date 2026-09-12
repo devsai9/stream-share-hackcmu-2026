@@ -1236,7 +1236,9 @@ export default function EditorPage() {
                                                     ? `0 0 0 2px ${note.movingUserColor ?? "#facc15"}`
                                                     : "0 2px 4px rgba(0,0,0,0.3)",
                                                 cursor: note.isDragging ? "grabbing" : "grab",
-                                                opacity: note.isDragging ? 0.8 : 1,
+                                                opacity: note.isDragging
+                                                    ? note.movingUserColor ? 0.58 : 0.8
+                                                    : 1,
                                                 zIndex: 1,
                                                 outline: selectedNoteId === note.id ? "2px solid #f5c451" : "none",
                                             }}
