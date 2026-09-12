@@ -39,6 +39,44 @@ export type Database = {
   }
   public: {
     Tables: {
+      midi_blocks: {
+        Row: {
+          created_at: string
+          id: string
+          length_steps: number
+          name: string
+          start_step: number
+          track_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          length_steps?: number
+          name?: string
+          start_step?: number
+          track_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          length_steps?: number
+          name?: string
+          start_step?: number
+          track_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "midi_blocks_track_id_fkey"
+            columns: ["track_id"]
+            isOneToOne: false
+            referencedRelation: "tracks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notes: {
         Row: {
           block_id: string
@@ -76,44 +114,6 @@ export type Database = {
             columns: ["block_id"]
             isOneToOne: false
             referencedRelation: "midi_blocks"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      midi_blocks: {
-        Row: {
-          created_at: string
-          id: string
-          length_steps: number
-          name: string
-          start_step: number
-          track_id: string
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          length_steps?: number
-          name?: string
-          start_step?: number
-          track_id: string
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          length_steps?: number
-          name?: string
-          start_step?: number
-          track_id?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "midi_blocks_track_id_fkey"
-            columns: ["track_id"]
-            isOneToOne: false
-            referencedRelation: "tracks"
             referencedColumns: ["id"]
           },
         ]
@@ -167,18 +167,21 @@ export type Database = {
       }
       projects: {
         Row: {
+          bpm: number
           created_at: string
           description: string | null
           id: string
           name: string
         }
         Insert: {
+          bpm?: number
           created_at?: string
           description?: string | null
           id: string
           name: string
         }
         Update: {
+          bpm?: number
           created_at?: string
           description?: string | null
           id?: string
