@@ -183,6 +183,23 @@ export default function EditorPage() {
         ));
     }, []);
 
+    const handleNotesUpdated = useCallback((nextNotes: NoteBlock[], mover?: PeerPresence) => {
+        setNotes(nextNotes.map((note) => mover && note.isDragging
+            ? {
+                ...note,
+                movingUserId: mover.userId,
+                movingUserEmail: mover.userName,
+                movingUserColor: mover.color,
+            }
+            : {
+                ...note,
+                movingUserId: undefined,
+                movingUserEmail: undefined,
+                movingUserColor: undefined,
+            },
+        ));
+    }, []);
+
     const {
         peers,
         localPresence,
@@ -197,7 +214,7 @@ export default function EditorPage() {
     } = useRealTimeSync({
         roomId: projectId ?? "",
         user: presence ?? { userId: "", userName: "", color: "" },
-        onNotesUpdated: setNotes,
+        onNotesUpdated: handleNotesUpdated,
         onTrackAdded: handleTrackAdded,
         onTrackRenamed: handleTrackRenamed,
         onTrackDeleted: handleTrackDeleted,
@@ -339,7 +356,7 @@ export default function EditorPage() {
                 isDragging: true,
             });
         }
-        void broadcastNotes(previewNotes).catch((broadcastError) => {
+        void broadcastNotes(previewNotes, localPresence).catch((broadcastError) => {
             setError(broadcastError instanceof Error ? broadcastError.message : "Could not sync MIDI note creation.");
         });
     }
@@ -580,7 +597,7 @@ export default function EditorPage() {
             );
 
             setNotes(nextNotes);
-            void broadcastNotes(nextNotes);
+            void broadcastNotes(nextNotes, localPresence);
         }
 
         function finishNoteDrag() {
@@ -602,7 +619,7 @@ export default function EditorPage() {
             window.removeEventListener("pointermove", moveNote);
             window.removeEventListener("pointerup", finishNoteDrag);
         };
-    }, [broadcastNotes, dragState, notes, persistNotes]);
+    }, [broadcastNotes, dragState, localPresence, notes, persistNotes]);
 
     useEffect(() => {
         if (!resizeState) return;
@@ -635,7 +652,7 @@ export default function EditorPage() {
                 void persistNotes(finishedNotes).catch((saveError) => {
                     setError(saveError instanceof Error ? saveError.message : "Could not save note length.");
                 });
-                void broadcastNotes(finishedNotes);
+                void broadcastNotes(finishedNotes, localPresence);
                 return finishedNotes;
             });
             setResizeState(null);
@@ -647,7 +664,7 @@ export default function EditorPage() {
             window.removeEventListener("pointermove", resizeNote);
             window.removeEventListener("pointerup", finishResize);
         };
-    }, [broadcastNotes, persistNotes, resizeState]);
+    }, [broadcastNotes, localPresence, persistNotes, resizeState]);
 
     useEffect(() => {
         function handleKeyDown(event: KeyboardEvent) {
@@ -1212,8 +1229,12 @@ export default function EditorPage() {
                                                 height: `${(1 / PITCHES.length) * 100}%`,
                                                 left: `${(note.startStep / MIDI_TOTAL_STEPS) * 100}%`,
                                                 width: `${(note.duration / MIDI_TOTAL_STEPS) * 100}%`,
-                                                background: note.isDragging ? "var(--accent)" : "var(--primary)",
-                                                boxShadow: note.isDragging ? "0 0 0 2px #facc15" : "0 2px 4px rgba(0,0,0,0.3)",
+                                                background: note.isDragging
+                                                    ? note.movingUserColor ?? "var(--accent)"
+                                                    : "var(--primary)",
+                                                boxShadow: note.isDragging
+                                                    ? `0 0 0 2px ${note.movingUserColor ?? "#facc15"}`
+                                                    : "0 2px 4px rgba(0,0,0,0.3)",
                                                 cursor: note.isDragging ? "grabbing" : "grab",
                                                 opacity: note.isDragging ? 0.8 : 1,
                                                 zIndex: 1,

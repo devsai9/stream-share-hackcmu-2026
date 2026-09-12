@@ -64,7 +64,7 @@ export interface BlockDeletedPayload {
 export interface UseRealTimeSyncOptions {
 	roomId: string;
 	user: PeerPresence;
-	onNotesUpdated?: (notes: NoteBlock[]) => void;
+	onNotesUpdated?: (notes: NoteBlock[], mover?: PeerPresence) => void;
 	onCursorMoved?: (presence: PeerPresence) => void;
 	onTrackAdded?: (payload: TrackAddedPayload) => void;
 	onTrackRenamed?: (track: Track) => void;
@@ -78,7 +78,7 @@ export interface UseRealTimeSyncReturn {
 	peers: PeerPresence[];
 	localPresence: PeerPresence;
 	isConnected: boolean;
-	broadcastNotes: (notes: NoteBlock[]) => Promise<void>;
+	broadcastNotes: (notes: NoteBlock[], mover?: PeerPresence) => Promise<void>;
 	broadcastCursor: (cursorStep: number | undefined) => Promise<void>;
 	broadcastTrackAdded: (payload: TrackAddedPayload) => Promise<void>;
 	broadcastTrackRenamed: (track: Track) => Promise<void>;
@@ -150,8 +150,14 @@ export function useRealTimeSync({
 			.on("presence", { event: "join" }, updatePeers)
 			.on("presence", { event: "leave" }, updatePeers)
 			.on("broadcast", { event: NOTES_EVENT }, ({ payload }) => {
-				if (payload?.senderId !== user.userId && Array.isArray(payload?.notes)) {
-					callbacksRef.current.onNotesUpdated?.(payload.notes as NoteBlock[]);
+				if (
+					payload?.senderId !== user.userId &&
+					Array.isArray(payload?.notes)
+				) {
+					callbacksRef.current.onNotesUpdated?.(
+						payload.notes as NoteBlock[],
+						payload.mover as PeerPresence | undefined,
+					);
 				}
 			})
 			.on("broadcast", { event: CURSOR_EVENT }, ({ payload }) => {
@@ -224,14 +230,14 @@ export function useRealTimeSync({
 		};
 	}, [roomId, user]);
 
-	const broadcastNotes = useCallback(async (notes: NoteBlock[]) => {
+	const broadcastNotes = useCallback(async (notes: NoteBlock[], mover?: PeerPresence) => {
 		const channel = channelRef.current;
 		if (!channel || !isConnected) return;
 
 		await channel.send({
 			type: "broadcast",
 			event: NOTES_EVENT,
-			payload: { senderId: user.userId, notes },
+			payload: { senderId: user.userId, notes, mover },
 		});
 	}, [isConnected, user.userId]);
 

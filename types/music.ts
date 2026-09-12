@@ -5,6 +5,9 @@ export interface NoteBlock {
   duration: number;   // Length in grid steps
   userId?: string;
   isDragging?: boolean;
+  movingUserId?: string;
+  movingUserEmail?: string;
+  movingUserColor?: string;
 }
 
 export interface PeerPresence {
