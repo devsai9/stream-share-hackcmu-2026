@@ -72,6 +72,7 @@ export default function EditorPage() {
     const [resizeState, setResizeState] = useState<ResizeState | null>(null);
     const [clipDragState, setClipDragState] = useState<ClipDragState | null>(null);
     const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+    const [remoteCursors, setRemoteCursors] = useState<PeerPresence[]>([]);
     const gridRef = useRef<HTMLDivElement>(null);
     const timelineRef = useRef<HTMLDivElement>(null);
 
@@ -95,10 +96,22 @@ export default function EditorPage() {
         };
     }, [user]);
 
-    const { peers, isConnected, broadcastNotes } = useRealTimeSync({
+    const { peers, isConnected, broadcastNotes, broadcastCursor } = useRealTimeSync({
         roomId: projectId ?? "",
         user: presence ?? { userId: "", userName: "", color: "" },
         onNotesUpdated: setNotes,
+        onCursorMoved: (cursorPresence) => {
+            setRemoteCursors((currentCursors) => {
+                if (!cursorPresence.cursor) {
+                    return currentCursors.filter((cursor) => cursor.userId !== cursorPresence.userId);
+                }
+
+                return [
+                    ...currentCursors.filter((cursor) => cursor.userId !== cursorPresence.userId),
+                    cursorPresence,
+                ];
+            });
+        },
     });
 
     useEffect(() => {
@@ -770,7 +783,18 @@ export default function EditorPage() {
                     </div>
 
                     {/* Piano Grid Canvas */}
-                    <div ref={gridRef} style={styles.gridCanvas}>
+                    <div
+                        ref={gridRef}
+                        style={styles.gridCanvas}
+                        onPointerMove={(event) => {
+                            const rect = event.currentTarget.getBoundingClientRect();
+                            void broadcastCursor({
+                                x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)),
+                                y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)),
+                            });
+                        }}
+                        onPointerLeave={() => void broadcastCursor(undefined)}
+                    >
                         {currentStep >= 0 && (
                             <div
                                 aria-hidden="true"
@@ -836,6 +860,22 @@ export default function EditorPage() {
                                 </div>
                             );
                         })}
+                        {remoteCursors.map((cursor) => cursor.cursor && (
+                            <div
+                                key={cursor.userId}
+                                aria-label={`${cursor.email ?? cursor.userName}'s cursor`}
+                                style={{
+                                    ...styles.remoteCursor,
+                                    left: `${cursor.cursor.x * 100}%`,
+                                    top: `${cursor.cursor.y * 100}%`,
+                                    borderLeftColor: cursor.color,
+                                }}
+                            >
+                                <span style={{ ...styles.remoteCursorLabel, backgroundColor: cursor.color }}>
+                                    {cursor.email ?? cursor.userName}
+                                </span>
+                            </div>
+                        ))}
                     </div>
 
                 </div>
@@ -1280,5 +1320,27 @@ const styles: Record<string, React.CSSProperties> = {
         padding: "0 4px",
         borderRadius: "2px",
         marginRight: "4px",
+    },
+    remoteCursor: {
+        position: "absolute",
+        width: 0,
+        height: 0,
+        borderTop: "7px solid transparent",
+        borderBottom: "7px solid transparent",
+        borderLeft: "10px solid",
+        transform: "translate(-2px, -2px)",
+        pointerEvents: "none",
+        zIndex: 4,
+    },
+    remoteCursorLabel: {
+        position: "absolute",
+        left: "7px",
+        top: "-8px",
+        padding: "2px 5px",
+        borderRadius: "3px",
+        color: "#111315",
+        fontSize: "9px",
+        fontWeight: 700,
+        whiteSpace: "nowrap",
     },
 };

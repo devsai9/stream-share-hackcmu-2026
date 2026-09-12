@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase/client";
-import type { NoteBlock, PeerPresence } from "../types/music";
+import type { CursorPosition, NoteBlock, PeerPresence } from "../types/music";
 
 const NOTES_EVENT = "notes-updated";
 const CURSOR_EVENT = "cursor-moved";
@@ -18,7 +18,7 @@ export interface UseRealTimeSyncReturn {
 	peers: PeerPresence[];
 	isConnected: boolean;
 	broadcastNotes: (notes: NoteBlock[]) => Promise<void>;
-	broadcastCursor: (cursorStep: number | undefined) => Promise<void>;
+	broadcastCursor: (position: CursorPosition | undefined) => Promise<void>;
 }
 
 /** Syncs ephemeral editor state through one Supabase Realtime channel per room. */
@@ -95,11 +95,11 @@ export function useRealTimeSync({
 		});
 	}, [isConnected, user.userId]);
 
-	const broadcastCursor = useCallback(async (cursorStep: number | undefined) => {
+	const broadcastCursor = useCallback(async (position: CursorPosition | undefined) => {
 		const channel = channelRef.current;
 		if (!channel || !isConnected) return;
 
-		const presence = { ...user, cursorStep };
+		const presence = { ...user, email: user.userName, cursor: position };
 		await channel.track(presence);
 		await channel.send({
 			type: "broadcast",
