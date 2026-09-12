@@ -20,3 +20,19 @@ export function signup(email: string, password: string): ReturnType<typeof supab
 export function getUser(): ReturnType<typeof supabase.auth.getUser> {
     return supabase.auth.getUser();
 }
+
+export async function getUidFromEmail(email: string): Promise<string> {
+    const { data, error } = await supabase.rpc("get_uid_from_email", {
+        input_email: email.trim(),
+    });
+
+    if (error) {
+        throw error;
+    }
+
+    if (!data) {
+        throw new Error("No user was found with that email address.");
+    }
+
+    return data;
+}

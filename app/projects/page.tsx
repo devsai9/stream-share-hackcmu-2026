@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight, Ellipsis, Music2, Plus, Share2, X } from "lucide-react";
 
-import { getUser } from "../../lib/auth";
+import { getUidFromEmail, getUser } from "../../lib/auth";
 import { createProject, getProjects, shareProject, type Project } from "../../lib/projects";
 
 import styles from "./page.module.css";
@@ -93,7 +93,8 @@ export default function ProjectsPage() {
         setShareMessage(null);
 
         try {
-            await shareProject(shareProjectId, shareEmail.trim());
+            const userId = await getUidFromEmail(shareEmail.trim());
+            await shareProject(shareProjectId, userId);
             setShareEmail("");
             setShareMessage("Project shared.");
         } catch (shareError) {

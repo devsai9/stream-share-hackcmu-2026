@@ -80,6 +80,27 @@ export type Database = {
           },
         ]
       }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       project_members: {
         Row: {
           created_at: string | null
@@ -164,7 +185,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_uid_from_email: { Args: { input_email: string }; Returns: string }
     }
     Enums: {
       [_ in never]: never
