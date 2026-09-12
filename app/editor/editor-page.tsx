@@ -19,7 +19,13 @@ import {
     type MidiBlock,
     type Track,
 } from "../../lib/editor";
-import { loadProject, updateProject, updateProjectBpm, type Project } from "../../lib/projects";
+import {
+    loadProject,
+    ProjectAccessError,
+    updateProject,
+    updateProjectBpm,
+    type Project,
+} from "../../lib/projects";
 import { useAudioEngine } from "../../hooks/useAudioEngine";
 import {
     useRealTimeSync,
@@ -310,6 +316,11 @@ export default function EditorPage() {
                 setActiveTrackId(loadedTracks[0].id);
                 setActiveBlockId(loadedBlocks.find((block) => block.track_id === loadedTracks[0].id)?.id ?? null);
             } catch (loadError) {
+                if (loadError instanceof ProjectAccessError) {
+                    router.replace("/projects");
+                    return;
+                }
+
                 setError(loadError instanceof Error ? loadError.message : "Could not load the editor.");
             } finally {
                 setLoading(false);
@@ -317,7 +328,7 @@ export default function EditorPage() {
         }
 
         void loadEditor();
-    }, [applyBpm, projectId]);
+    }, [applyBpm, projectId, router]);
 
     useEffect(() => {
         if (!activeBlockId) return;
