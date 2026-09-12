@@ -192,7 +192,7 @@ export default function ProjectsPage() {
                         <div className={styles.projectGrid}>
                             {projects.map((project) => (
                                 <article className={styles.projectCard} key={project.id}>
-                                    <a className={styles.projectLink} href="/editor">
+                                    <a className={styles.projectLink} href={`/editor?projectId=${encodeURIComponent(project.id)}`}>
                                         <div className={styles.cardIcon}>
                                             <Music2 size={22} aria-hidden="true" />
                                         </div>
