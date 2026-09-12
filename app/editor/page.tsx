@@ -1,30 +1,236 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Play, Pause, Square, Mic, Music2, Plus, Users } from "lucide-react";
-
-interface NoteBlock {
-  id: string;
-  pitch: string;
-  startStep: number;
-  duration: number;
-  userId?: string;
-  isDragging?: boolean;
-}
+import { getUser } from "../../lib/auth";
+import { getTracks, createTrack, getTrackNotes, replaceTrackNotes, type Track } from "../../lib/editor";
+import { loadProject, type Project } from "../../lib/projects";
+import { useAudioEngine } from "../../hooks/useAudioEngine";
+import { useRealTimeSync } from "../../hooks/useRealTimeSync";
+import type { NoteBlock, PeerPresence } from "../../types/music";
 
 const PITCHES = ["C5", "B4", "A4", "G4", "F4", "E4", "D4", "C4"];
 const TOTAL_STEPS = 16;
 
-export default function EditorPage() {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [bpm, setBpm] = useState(120);
-  const [activeTrack, setActiveTrack] = useState(1);
+interface DragState {
+  noteId: string;
+  stepOffset: number;
+  rowOffset: number;
+}
 
-  const [notes] = useState<NoteBlock[]>([
-    { id: "1", pitch: "E4", startStep: 0, duration: 2 },
-    { id: "2", pitch: "G4", startStep: 2, duration: 2 },
-    { id: "3", pitch: "C5", startStep: 4, duration: 4, isDragging: true, userId: "peer1" },
-  ]);
+export default function EditorPage() {
+  const searchParams = useSearchParams();
+  const projectId = searchParams.get("projectId");
+  const [project, setProject] = useState<Project | null>(null);
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
+  const [notes, setNotes] = useState<NoteBlock[]>([]);
+  const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  const {
+    isPlaying,
+    bpm,
+    currentStep,
+    setBpm,
+    playPreview,
+    togglePlayback,
+    stopPlayback,
+    scheduleNotes,
+  } = useAudioEngine();
+
+  const presence = useMemo<PeerPresence | null>(() => {
+    if (!user) return null;
+    return {
+      userId: user.id,
+      userName: user.email ?? "Anonymous",
+      color: "#f97316",
+    };
+  }, [user]);
+
+  const { peers, isConnected, broadcastNotes } = useRealTimeSync({
+    roomId: projectId ?? "",
+    user: presence ?? { userId: "", userName: "", color: "" },
+    onNotesUpdated: setNotes,
+  });
+
+  useEffect(() => {
+    async function loadEditor() {
+      if (!projectId) {
+        setError("Choose a project before opening the editor.");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const [{ data: userData }, loadedProject] = await Promise.all([
+          getUser(),
+          loadProject(projectId),
+        ]);
+
+        if (!userData.user) {
+          throw new Error("You must be signed in to open the editor.");
+        }
+
+        setUser({ id: userData.user.id, email: userData.user.email });
+        setProject(loadedProject);
+
+        let loadedTracks = await getTracks(projectId);
+        if (loadedTracks.length === 0) {
+          loadedTracks = [await createTrack(projectId, "Track 1", 0)];
+        }
+
+        setTracks(loadedTracks);
+        setActiveTrackId(loadedTracks[0].id);
+      } catch (loadError) {
+        setError(loadError instanceof Error ? loadError.message : "Could not load the editor.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    void loadEditor();
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!activeTrackId) return;
+    const trackId = activeTrackId;
+
+    async function loadNotes() {
+      try {
+        setNotes(await getTrackNotes(trackId));
+      } catch (loadError) {
+        setError(loadError instanceof Error ? loadError.message : "Could not load notes.");
+      }
+    }
+
+    void loadNotes();
+  }, [activeTrackId]);
+
+  useEffect(() => {
+    scheduleNotes(notes);
+  }, [notes, scheduleNotes]);
+
+  const persistNotes = useCallback(async (nextNotes: NoteBlock[]) => {
+    if (!activeTrackId || !user) return;
+
+    await replaceTrackNotes(activeTrackId, nextNotes, user.id);
+  }, [activeTrackId, user]);
+
+  async function updateNotes(nextNotes: NoteBlock[]) {
+    setNotes(nextNotes);
+
+    try {
+      await persistNotes(nextNotes);
+      await broadcastNotes(nextNotes);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not save notes.");
+    }
+  }
+
+  function addNote(pitch: string, startStep: number) {
+    const note: NoteBlock = {
+      id: crypto.randomUUID(),
+      pitch,
+      startStep,
+      duration: 1,
+      userId: user?.id,
+    };
+
+    void playPreview(note.pitch);
+    void updateNotes([...notes, note]);
+  }
+
+  function beginNoteDrag(event: React.PointerEvent<HTMLDivElement>, note: NoteBlock) {
+    const grid = gridRef.current;
+    if (!grid) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = grid.getBoundingClientRect();
+    const stepWidth = rect.width / TOTAL_STEPS;
+    const rowHeight = rect.height / PITCHES.length;
+    const noteLeft = note.startStep * stepWidth;
+    const noteTop = PITCHES.indexOf(note.pitch) * rowHeight;
+
+    setDragState({
+      noteId: note.id,
+      stepOffset: (event.clientX - rect.left - noteLeft) / stepWidth,
+      rowOffset: (event.clientY - rect.top - noteTop) / rowHeight,
+    });
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  useEffect(() => {
+    if (!dragState) return;
+    const activeDrag = dragState;
+
+    function moveNote(event: PointerEvent) {
+      const grid = gridRef.current;
+      if (!grid) return;
+
+      const rect = grid.getBoundingClientRect();
+      const stepWidth = rect.width / TOTAL_STEPS;
+      const rowHeight = rect.height / PITCHES.length;
+      const draggedNote = notes.find((note) => note.id === activeDrag.noteId);
+      if (!draggedNote) return;
+
+      const nextStartStep = Math.max(
+        0,
+        Math.min(
+          TOTAL_STEPS - draggedNote.duration,
+          Math.round((event.clientX - rect.left) / stepWidth - activeDrag.stepOffset),
+        ),
+      );
+      const nextRow = Math.max(
+        0,
+        Math.min(
+          PITCHES.length - 1,
+          Math.round((event.clientY - rect.top) / rowHeight - activeDrag.rowOffset),
+        ),
+      );
+      const nextNotes = notes.map((note) =>
+        note.id === activeDrag.noteId
+          ? { ...note, startStep: nextStartStep, pitch: PITCHES[nextRow], isDragging: true }
+          : note,
+      );
+
+      setNotes(nextNotes);
+      void broadcastNotes(nextNotes);
+    }
+
+    function finishNoteDrag() {
+      const draggedNotes = notes.map((note) =>
+        note.id === activeDrag.noteId ? { ...note, isDragging: false } : note,
+      );
+      setNotes(draggedNotes);
+      void persistNotes(draggedNotes).catch((saveError) => {
+        setError(saveError instanceof Error ? saveError.message : "Could not save notes.");
+      });
+      void broadcastNotes(draggedNotes);
+      setDragState(null);
+    }
+
+    window.addEventListener("pointermove", moveNote);
+    window.addEventListener("pointerup", finishNoteDrag, { once: true });
+
+    return () => {
+      window.removeEventListener("pointermove", moveNote);
+      window.removeEventListener("pointerup", finishNoteDrag);
+    };
+  }, [broadcastNotes, dragState, notes, persistNotes]);
+
+  if (loading) {
+    return <main style={styles.statusPage}>Loading editor...</main>;
+  }
+
+  if (error && !project) {
+    return <main style={styles.statusPage}>{error}</main>;
+  }
 
   return (
     <div style={styles.pageContainer}>
@@ -33,12 +239,12 @@ export default function EditorPage() {
         {/* Transport Controls */}
         <div style={styles.flexCenterGap3}>
           <button 
-            onClick={() => setIsPlaying(!isPlaying)}
+            onClick={() => void togglePlayback()}
             style={styles.playButton}
           >
             {isPlaying ? <Pause size={18} /> : <Play size={18} style={{ marginLeft: "2px" }} />}
           </button>
-          <button style={styles.iconButton}>
+          <button style={styles.iconButton} onClick={stopPlayback}>
             <Square size={16} />
           </button>
           <button style={{ ...styles.iconButton, color: "#ef4444" }}>
@@ -50,7 +256,7 @@ export default function EditorPage() {
           {/* BPM Input */}
           <div style={styles.bpmContainer}>
             <span style={{ color: "var(--accent)" }}>BPM</span>
-            <input 
+            <input
               type="number" 
               value={bpm} 
               onChange={(e) => setBpm(Number(e.target.value))}
@@ -61,18 +267,22 @@ export default function EditorPage() {
 
         {/* Project Details */}
         <div style={{ fontSize: "14px", fontWeight: 600, letterSpacing: "0.025em" }}>
-          Realtime Session <span style={{ color: "var(--accent)" }}>#001</span>
+          {project?.name ?? "Realtime Session"} <span style={{ color: "var(--accent)" }}>{isConnected ? "Online" : "Offline"}</span>
         </div>
 
         {/* Multiplayer Presence */}
         <div style={styles.flexCenterGap3}>
           <div style={styles.presenceBadge}>
             <Users size={14} style={{ color: "var(--accent)" }} />
-            <span>2 Active</span>
+            <span>{peers.length + 1} Active</span>
           </div>
           <div style={{ display: "flex", marginInline: "-4px" }}>
             <div style={{ ...styles.avatar, background: "var(--primary)" }}>You</div>
-            <div style={{ ...styles.avatar, background: "var(--accent)", marginLeft: "-8px" }}>P2</div>
+            {peers.slice(0, 3).map((peer) => (
+              <div key={peer.userId} style={{ ...styles.avatar, background: peer.color, marginLeft: "-8px" }}>
+                {peer.userName.slice(0, 2).toUpperCase()}
+              </div>
+            ))}
           </div>
         </div>
       </header>
@@ -82,25 +292,25 @@ export default function EditorPage() {
         
         {/* 2. TRACKS TIMELINE VIEW */}
         <div style={styles.tracksSection}>
-          {[1, 2].map((trackId) => (
+          {tracks.map((track) => (
             <div 
-              key={trackId}
-              onClick={() => setActiveTrack(trackId)}
+              key={track.id}
+              onClick={() => setActiveTrackId(track.id)}
               style={{
                 ...styles.trackRow,
-                backgroundColor: activeTrack === trackId ? "rgba(255, 255, 255, 0.03)" : "transparent"
+                backgroundColor: activeTrackId === track.id ? "rgba(255, 255, 255, 0.03)" : "transparent"
               }}
             >
               {/* Track Info Side Panel */}
               <div 
                 style={{ 
                   ...styles.trackSidePanel,
-                  backgroundColor: activeTrack === trackId ? "var(--secondary-accent)" : "transparent" 
+                  backgroundColor: activeTrackId === track.id ? "var(--secondary-accent)" : "transparent" 
                 }}
               >
                 <div style={styles.flexCenterGap2}>
                   <Music2 size={14} style={{ color: "var(--accent)" }} />
-                  <span style={{ fontSize: "12px", fontWeight: "bold" }}>Track {trackId}</span>
+                  <span style={{ fontSize: "12px", fontWeight: "bold" }}>{track.name}</span>
                 </div>
                 <div style={styles.trackControls}>
                   <span>M</span> <span>S</span>
@@ -113,22 +323,40 @@ export default function EditorPage() {
                 <div 
                   style={{ 
                     ...styles.midiClip,
-                    left: `${trackId * 10}%`, 
-                    background: trackId === 1 ? "var(--secondary)" : "var(--primary)",
+                    left: "10%",
+                    background: track.position % 2 === 0 ? "var(--secondary)" : "var(--primary)",
                   }}
                 >
-                  MIDI Clip {trackId}
+                  MIDI Clip
                 </div>
               </div>
             </div>
           ))}
 
-          <button style={styles.addTrackButton}>
+          <button style={styles.addTrackButton} onClick={() => setError("Track creation UI is next.")}>
             <Plus size={14} /> Add Track
           </button>
         </div>
 
         {/* 3. PIANO ROLL EDITOR */}
+        <div style={styles.editorToolbar}>
+          <div style={styles.toolbarGroup}>
+            <button style={styles.toolButton} type="button">↖</button>
+            <button style={{ ...styles.toolButton, ...styles.activeToolButton }} type="button">✎</button>
+            <span style={styles.toolbarDivider} />
+            <span style={styles.toolbarLabel}>MIDI Notes</span>
+          </div>
+          <div style={styles.toolbarGroup}>
+            <span style={styles.toolbarLabel}>Snap</span>
+            <select defaultValue="1/16" style={styles.selectInput} aria-label="Snap interval">
+              <option>1/16</option>
+              <option>1/8</option>
+              <option>1/4</option>
+            </select>
+            <button style={styles.toolButton} type="button">−</button>
+            <button style={styles.toolButton} type="button">+</button>
+          </div>
+        </div>
         <div style={styles.pianoRollSection}>
           
           {/* Piano Keys Column */}
@@ -147,11 +375,26 @@ export default function EditorPage() {
           </div>
 
           {/* Piano Grid Canvas */}
-          <div style={styles.gridCanvas}>
+          <div ref={gridRef} style={styles.gridCanvas}>
+            {currentStep >= 0 && (
+              <div
+                aria-hidden="true"
+                style={{
+                  ...styles.playhead,
+                  left: `${((currentStep + 0.5) / TOTAL_STEPS) * 100}%`,
+                }}
+              />
+            )}
             {PITCHES.map((pitch) => (
               <div key={pitch} style={styles.gridRow}>
                 {Array.from({ length: TOTAL_STEPS }).map((_, stepIndex) => (
-                  <div key={stepIndex} style={styles.gridCell} />
+                  <button
+                    key={stepIndex}
+                    type="button"
+                    aria-label={`Add ${pitch} at step ${stepIndex + 1}`}
+                    onClick={() => addNote(pitch, stepIndex)}
+                    style={styles.gridCell}
+                  />
                 ))}
               </div>
             ))}
@@ -164,6 +407,7 @@ export default function EditorPage() {
               return (
                 <div
                   key={note.id}
+                  onPointerDown={(event) => beginNoteDrag(event, note)}
                   style={{
                     ...styles.noteBlock,
                     top: `${(rowIndex / PITCHES.length) * 100}%`,
@@ -174,6 +418,7 @@ export default function EditorPage() {
                     boxShadow: note.isDragging ? "0 0 0 2px #facc15" : "0 2px 4px rgba(0,0,0,0.3)",
                     cursor: note.isDragging ? "grabbing" : "grab",
                     opacity: note.isDragging ? 0.8 : 1,
+                    zIndex: 1,
                   }}
                 >
                   {note.userId && <span style={styles.userTag}>{note.userId}</span>}
@@ -186,12 +431,31 @@ export default function EditorPage() {
         </div>
 
       </div>
+      {error && <div style={styles.errorBanner}>{error}</div>}
     </div>
   );
 }
 
 // STYLES OBJECT
 const styles: Record<string, React.CSSProperties> = {
+  statusPage: {
+    minHeight: "100vh",
+    display: "grid",
+    placeItems: "center",
+    background: "var(--background)",
+    color: "var(--foreground)",
+  },
+  errorBanner: {
+    position: "fixed",
+    right: "16px",
+    bottom: "16px",
+    maxWidth: "360px",
+    padding: "10px 14px",
+    border: "1px solid #ef4444",
+    background: "rgba(40, 8, 4, 0.95)",
+    color: "var(--foreground)",
+    fontSize: "12px",
+  },
   pageContainer: {
     display: "flex",
     flexDirection: "column",
@@ -203,9 +467,9 @@ const styles: Record<string, React.CSSProperties> = {
     color: "var(--foreground)",
   },
   header: {
-    height: "56px",
+    height: "58px",
     borderBottom: "1px solid var(--secondary-accent)",
-    backgroundColor: "rgba(70, 12, 0, 0.3)",
+    backgroundColor: "#090a0c",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
@@ -294,8 +558,59 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     overflow: "hidden",
   },
+  editorToolbar: {
+    height: "48px",
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "0 14px",
+    borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+    backgroundColor: "#121416",
+  },
+  toolbarGroup: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+  toolbarLabel: {
+    color: "#a8adb5",
+    fontSize: "11px",
+    fontWeight: 600,
+  },
+  toolbarDivider: {
+    height: "20px",
+    width: "1px",
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    margin: "0 4px",
+  },
+  toolButton: {
+    width: "28px",
+    height: "28px",
+    display: "grid",
+    placeItems: "center",
+    border: "1px solid transparent",
+    borderRadius: "4px",
+    backgroundColor: "#1d2024",
+    color: "#d7d9dc",
+    cursor: "pointer",
+    fontSize: "15px",
+  },
+  activeToolButton: {
+    backgroundColor: "#b77a19",
+    color: "#fff",
+  },
+  selectInput: {
+    height: "28px",
+    border: "1px solid rgba(255, 255, 255, 0.12)",
+    borderRadius: "4px",
+    backgroundColor: "#1d2024",
+    color: "#d7d9dc",
+    padding: "0 8px",
+    fontSize: "11px",
+  },
   tracksSection: {
-    height: "40%",
+    height: "30%",
     borderBottom: "1px solid var(--secondary-accent)",
     display: "flex",
     flexDirection: "column",
@@ -331,7 +646,7 @@ const styles: Record<string, React.CSSProperties> = {
   timelineLane: {
     flex: 1,
     position: "relative",
-    backgroundColor: "rgba(0, 0, 0, 0.2)",
+    backgroundColor: "#101214",
     display: "flex",
     alignItems: "center",
   },
@@ -364,13 +679,15 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     display: "flex",
     overflow: "hidden",
+    backgroundColor: "#181a1d",
   },
   pianoKeysColumn: {
-    width: "96px",
+    width: "72px",
+    flexShrink: 0,
     borderRight: "1px solid var(--secondary-accent)",
     display: "flex",
     flexDirection: "column",
-    backgroundColor: "rgba(0, 0, 0, 0.4)",
+    backgroundColor: "#111315",
   },
   pianoKey: {
     flex: 1,
@@ -382,6 +699,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: "10px",
     fontFamily: "monospace",
     opacity: 0.6,
+    color: "#b5bac2",
   },
   gridCanvas: {
     flex: 1,
@@ -389,6 +707,17 @@ const styles: Record<string, React.CSSProperties> = {
     overflowX: "auto",
     display: "flex",
     flexDirection: "column",
+    minWidth: "640px",
+    backgroundColor: "#1a1c1e",
+  },
+  playhead: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: "2px",
+    backgroundColor: "var(--accent)",
+    pointerEvents: "none",
+    zIndex: 2,
   },
   gridRow: {
     flex: 1,
@@ -399,6 +728,11 @@ const styles: Record<string, React.CSSProperties> = {
   gridCell: {
     flex: 1,
     borderRight: "1px solid rgba(255, 255, 255, 0.05)",
+    appearance: "none",
+    minWidth: 0,
+    padding: 0,
+    backgroundColor: "transparent",
+    cursor: "crosshair",
   },
   noteBlock: {
     position: "absolute",
@@ -411,6 +745,8 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: "bold",
     color: "var(--foreground)",
     transition: "box-shadow 0.1s",
+    touchAction: "none",
+    userSelect: "none",
   },
   userTag: {
     fontSize: "8px",

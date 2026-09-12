@@ -80,7 +80,7 @@ export default function ProjectsPage() {
                     {!loading && !error && projects.length > 0 && (
                         <div className={styles.projectGrid}>
                             {projects.map((project) => (
-                                <a className={styles.projectCard} href="/editor" key={project.id}>
+                                <a className={styles.projectCard} href={`/editor?projectId=${project.id}`} key={project.id}>
                                     <div className={styles.cardIcon}>
                                         <FolderOpen size={22} aria-hidden="true" />
                                     </div>

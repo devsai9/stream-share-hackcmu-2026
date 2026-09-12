@@ -67,7 +67,7 @@ export async function updateProject(id: string, name: string, description: strin
     return data;
 }
 
-export async function shareProject(id: string, email: string): Promise<void> {
+export async function shareProject(id: string, userId: string): Promise<void> {
     const { data: userData, error: userError } = await getUser();
 
     if (userError) {
@@ -78,23 +78,9 @@ export async function shareProject(id: string, email: string): Promise<void> {
         throw new Error("You must be signed in to create a project.");
     }
 
-    const { data: userToShare, error: userToShareError } = await supabase
-        .from("users")
-        .select("id")
-        .eq("email", email)
-        .single();
-
-    if (userToShareError) {
-        throw userToShareError;
-    }
-
-    if (!userToShare) {
-        throw new Error("User not found.");
-    }
-
     const { error: memberError } = await supabase
         .from("project_members")
-        .insert({ project_id: id, user_id: userToShare.id });
+        .insert({ project_id: id, user_id: userId });
 
     if (memberError) {
         throw memberError;
