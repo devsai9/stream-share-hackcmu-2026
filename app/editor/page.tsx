@@ -23,9 +23,11 @@ import { useRealTimeSync } from "../../hooks/useRealTimeSync";
 import type { NoteBlock, PeerPresence } from "../../types/music";
 
 const PITCHES = ["C5", "B4", "A4", "G4", "F4", "E4", "D4", "C4"];
-const TOTAL_STEPS = 16;
 const STEPS_PER_BAR = 4;
-const BAR_COUNT = TOTAL_STEPS / STEPS_PER_BAR;
+const TRACK_BAR_COUNT = 100;
+const TRACK_TOTAL_STEPS = TRACK_BAR_COUNT * STEPS_PER_BAR;
+const MIDI_TOTAL_STEPS = 16;
+const MIDI_BAR_COUNT = MIDI_TOTAL_STEPS / STEPS_PER_BAR;
 
 interface DragState {
     noteId: string;
@@ -138,7 +140,7 @@ export default function EditorPage() {
                     const trackBlocks = await getTrackBlocks(track.id);
                     return trackBlocks.length > 0
                         ? trackBlocks
-                        : [await createMidiBlock(track.id, "MIDI Clip", 0, TOTAL_STEPS)];
+                        : [await createMidiBlock(track.id, "MIDI Clip", 0, MIDI_TOTAL_STEPS)];
                 }))).flat();
 
                 setTracks(loadedTracks);
@@ -215,7 +217,7 @@ export default function EditorPage() {
 
         try {
             const track = await createTrack(projectId, trackName, tracks.length);
-            const block = await createMidiBlock(track.id, "MIDI Clip", 0, TOTAL_STEPS);
+            const block = await createMidiBlock(track.id, "MIDI Clip", 0, MIDI_TOTAL_STEPS);
             setTracks((currentTracks) => [...currentTracks, track]);
             setBlocks((currentBlocks) => [...currentBlocks, block]);
             setActiveTrackId(track.id);
@@ -235,7 +237,7 @@ export default function EditorPage() {
         );
 
         try {
-            const block = await createMidiBlock(track.id, `MIDI Clip ${trackBlocks.length + 1}`, startStep, TOTAL_STEPS);
+            const block = await createMidiBlock(track.id, `MIDI Clip ${trackBlocks.length + 1}`, startStep, MIDI_TOTAL_STEPS);
             setBlocks((currentBlocks) => [...currentBlocks, block]);
             setActiveTrackId(track.id);
             setActiveBlockId(block.id);
@@ -313,7 +315,7 @@ export default function EditorPage() {
         event.preventDefault();
         event.stopPropagation();
         const rect = grid.getBoundingClientRect();
-        const stepWidth = rect.width / TOTAL_STEPS;
+        const stepWidth = rect.width / MIDI_TOTAL_STEPS;
         setSelectedNoteId(note.id);
         setResizeState({
             noteId: note.id,
@@ -331,7 +333,7 @@ export default function EditorPage() {
         event.preventDefault();
         event.stopPropagation();
         const rect = grid.getBoundingClientRect();
-        const stepWidth = rect.width / TOTAL_STEPS;
+        const stepWidth = rect.width / MIDI_TOTAL_STEPS;
         const rowHeight = rect.height / PITCHES.length;
         const noteLeft = note.startStep * stepWidth;
         const noteTop = PITCHES.indexOf(note.pitch) * rowHeight;
@@ -353,7 +355,7 @@ export default function EditorPage() {
             if (!grid) return;
 
             const rect = grid.getBoundingClientRect();
-            const stepWidth = rect.width / TOTAL_STEPS;
+            const stepWidth = rect.width / MIDI_TOTAL_STEPS;
             const rowHeight = rect.height / PITCHES.length;
             const draggedNote = notes.find((note) => note.id === activeDrag.noteId);
             if (!draggedNote) return;
@@ -361,7 +363,7 @@ export default function EditorPage() {
             const nextStartStep = Math.max(
                 0,
                 Math.min(
-                    TOTAL_STEPS - draggedNote.duration,
+                    MIDI_TOTAL_STEPS - draggedNote.duration,
                     Math.round((event.clientX - rect.left) / stepWidth - activeDrag.stepOffset),
                 ),
             );
@@ -412,12 +414,12 @@ export default function EditorPage() {
             if (!grid) return;
 
             const rect = grid.getBoundingClientRect();
-            const stepWidth = rect.width / TOTAL_STEPS;
+            const stepWidth = rect.width / MIDI_TOTAL_STEPS;
             const currentStep = (event.clientX - rect.left) / stepWidth;
             const nextDuration = Math.max(
                 1,
                 Math.min(
-                    TOTAL_STEPS - activeResize.startStep,
+                    MIDI_TOTAL_STEPS - activeResize.startStep,
                     Math.round(activeResize.duration + currentStep - activeResize.pointerStartStep),
                 ),
             );
@@ -473,7 +475,7 @@ export default function EditorPage() {
         setClipDragState({
             blockId: block.id,
             trackId: track.id,
-            pointerStartStep: ((event.clientX - rect.left) / rect.width) * TOTAL_STEPS,
+            pointerStartStep: ((event.clientX - rect.left) / rect.width) * TRACK_TOTAL_STEPS,
             clipStartStep: block.start_step,
             currentStartStep: block.start_step,
         });
@@ -499,14 +501,14 @@ export default function EditorPage() {
             const timeline = clipTimelineRef.current;
             if (!timeline) return;
             const rect = timeline.getBoundingClientRect();
-            const pointerStep = ((event.clientX - rect.left) / rect.width) * TOTAL_STEPS;
+            const pointerStep = ((event.clientX - rect.left) / rect.width) * TRACK_TOTAL_STEPS;
             const draggedBlock = blocks.find((block) => block.id === activeClipDrag.blockId);
             if (!draggedBlock) return;
 
             const nextStartStep = Math.max(
                 0,
                 Math.min(
-                    TOTAL_STEPS - draggedBlock.length_steps,
+                    TRACK_TOTAL_STEPS - draggedBlock.length_steps,
                     Math.round(activeClipDrag.clipStartStep + pointerStep - activeClipDrag.pointerStartStep),
                 ),
             );
@@ -638,7 +640,7 @@ export default function EditorPage() {
                     <div style={styles.tracksViewport}>
                         <div style={styles.trackNamesColumn}>
                             <div style={styles.barRulerSpacer} />
-                            <div ref={trackNamesRef} style={styles.trackNamesScroll}>
+                            <div ref={trackNamesRef} className="editor-scrollbar" style={styles.trackNamesScroll}>
                                 {tracks.map((track) => (
                                     <div
                                         key={track.id}
@@ -652,6 +654,7 @@ export default function EditorPage() {
                                         }}
                                         style={{
                                             ...styles.trackRow,
+                                            minWidth: "192px",
                                             backgroundColor: activeTrackId === track.id ? "var(--secondary-accent)" : "transparent",
                                         }}
                                     >
@@ -701,6 +704,7 @@ export default function EditorPage() {
 
                         <div
                             ref={timelineScrollRef}
+                            className="editor-scrollbar"
                             onScroll={(event) => {
                                 if (trackNamesRef.current) {
                                     trackNamesRef.current.scrollTop = event.currentTarget.scrollTop;
@@ -711,14 +715,14 @@ export default function EditorPage() {
                             }}
                             style={styles.timelineScrollColumn}
                         >
-                            <div style={styles.barRuler}>
-                                {Array.from({ length: BAR_COUNT }).map((_, barIndex) => (
+                            <div style={styles.trackBarRuler}>
+                                {Array.from({ length: TRACK_BAR_COUNT }).map((_, barIndex) => (
                                     <div
                                         key={barIndex}
                                         style={{
                                             ...styles.barNumber,
-                                            left: `${(barIndex / BAR_COUNT) * 100}%`,
-                                            width: `${(1 / BAR_COUNT) * 100}%`,
+                                            left: `${(barIndex / TRACK_BAR_COUNT) * 100}%`,
+                                            width: `${(1 / TRACK_BAR_COUNT) * 100}%`,
                                         }}
                                     >
                                         {barIndex + 1}
@@ -753,8 +757,8 @@ export default function EditorPage() {
                                                 }}
                                                 style={{
                                                     ...styles.midiClip,
-                                                    left: `${(block.start_step / TOTAL_STEPS) * 100}%`,
-                                                    width: `${(block.length_steps / TOTAL_STEPS) * 100}%`,
+                                                    left: `${(block.start_step / TRACK_TOTAL_STEPS) * 100}%`,
+                                                    width: `${(block.length_steps / TRACK_TOTAL_STEPS) * 100}%`,
                                                     background: track.position % 2 === 0 ? "var(--secondary)" : "var(--primary)",
                                                     outline: activeBlockId === block.id ? "2px solid #e9a82e" : "none",
                                                 }}
@@ -774,7 +778,7 @@ export default function EditorPage() {
 
                         <div style={styles.addBlockColumn}>
                             <div style={styles.barRulerSpacer} />
-                            <div ref={addBlockScrollRef} style={styles.addBlockScroll}>
+                            <div ref={addBlockScrollRef} className="editor-scrollbar" style={styles.addBlockScroll}>
                                 {tracks.map((track) => (
                                     <div key={track.id} style={styles.addBlockRow}>
                                         <button
@@ -868,16 +872,16 @@ export default function EditorPage() {
                         ))}
                     </div>
 
-                    <div style={styles.gridScrollViewport}>
+                    <div className="editor-scrollbar" style={styles.gridScrollViewport}>
                         <div style={styles.gridContent}>
-                            <div style={styles.barRuler}>
-                                {Array.from({ length: BAR_COUNT }).map((_, barIndex) => (
+                            <div style={styles.midiBarRuler}>
+                                {Array.from({ length: MIDI_BAR_COUNT }).map((_, barIndex) => (
                                     <div
                                         key={barIndex}
                                         style={{
                                             ...styles.barNumber,
-                                            left: `${(barIndex / BAR_COUNT) * 100}%`,
-                                            width: `${(1 / BAR_COUNT) * 100}%`,
+                                            left: `${(barIndex / MIDI_BAR_COUNT) * 100}%`,
+                                            width: `${(1 / MIDI_BAR_COUNT) * 100}%`,
                                         }}
                                     >
                                         {barIndex + 1}
@@ -890,13 +894,13 @@ export default function EditorPage() {
                                         aria-hidden="true"
                                         style={{
                                             ...styles.playhead,
-                                            left: `${((currentStep + 0.5) / TOTAL_STEPS) * 100}%`,
+                                            left: `${((currentStep + 0.5) / MIDI_TOTAL_STEPS) * 100}%`,
                                         }}
                                     />
                                 )}
                                 {PITCHES.map((pitch) => (
                                     <div key={pitch} style={styles.gridRow}>
-                                        {Array.from({ length: TOTAL_STEPS }).map((_, stepIndex) => (
+                                        {Array.from({ length: MIDI_TOTAL_STEPS }).map((_, stepIndex) => (
                                             <button
                                                 key={stepIndex}
                                                 type="button"
@@ -929,8 +933,8 @@ export default function EditorPage() {
                                                 ...styles.noteBlock,
                                                 top: `${(rowIndex / PITCHES.length) * 100}%`,
                                                 height: `${(1 / PITCHES.length) * 100}%`,
-                                                left: `${(note.startStep / TOTAL_STEPS) * 100}%`,
-                                                width: `${(note.duration / TOTAL_STEPS) * 100}%`,
+                                                left: `${(note.startStep / MIDI_TOTAL_STEPS) * 100}%`,
+                                                width: `${(note.duration / MIDI_TOTAL_STEPS) * 100}%`,
                                                 background: note.isDragging ? "var(--accent)" : "var(--primary)",
                                                 boxShadow: note.isDragging ? "0 0 0 2px #facc15" : "0 2px 4px rgba(0,0,0,0.3)",
                                                 cursor: note.isDragging ? "grabbing" : "grab",
@@ -939,7 +943,6 @@ export default function EditorPage() {
                                                 outline: selectedNoteId === note.id ? "2px solid #f5c451" : "none",
                                             }}
                                         >
-                                            {note.userId && <span style={styles.userTag}>{note.userId}</span>}
                                             {note.pitch}
                                             <button
                                                 type="button"
@@ -1171,7 +1174,6 @@ const styles: Record<string, React.CSSProperties> = {
         minHeight: 0,
         overflowY: "auto",
         overflowX: "hidden",
-        scrollbarWidth: "none",
     },
     timelineScrollColumn: {
         flex: 1,
@@ -1204,7 +1206,15 @@ const styles: Record<string, React.CSSProperties> = {
         borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
         backgroundColor: "#111315",
     },
-    barRuler: {
+    trackBarRuler: {
+        position: "relative",
+        width: "16000px",
+        height: "24px",
+        flexShrink: 0,
+        borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+        backgroundColor: "#111315",
+    },
+    midiBarRuler: {
         position: "relative",
         width: "640px",
         height: "24px",
@@ -1228,7 +1238,7 @@ const styles: Record<string, React.CSSProperties> = {
     trackRow: {
         display: "flex",
         height: "80px",
-        minWidth: "640px",
+        minWidth: "16000px",
         borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
         cursor: "pointer",
         transition: "background-color 0.2s",
@@ -1285,7 +1295,7 @@ const styles: Record<string, React.CSSProperties> = {
         accentColor: "var(--primary)",
     },
     timelineLane: {
-        width: "640px",
+        width: "16000px",
         flexShrink: 0,
         position: "relative",
         backgroundColor: "#101214",
@@ -1383,7 +1393,7 @@ const styles: Record<string, React.CSSProperties> = {
     pianoKeysColumn: {
         width: "72px",
         flexShrink: 0,
-        borderRight: "1px solid var(--secondary-accent)",
+        borderRight: "1px solid rgba(255, 255, 255, 0.035)",
         display: "flex",
         flexDirection: "column",
         backgroundColor: "#111315",
@@ -1404,7 +1414,7 @@ const styles: Record<string, React.CSSProperties> = {
     },
     pianoKey: {
         flex: 1,
-        borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+        borderBottom: "1px solid rgba(255, 255, 255, 0.025)",
         display: "flex",
         alignItems: "center",
         justifyContent: "flex-end",
@@ -1434,12 +1444,12 @@ const styles: Record<string, React.CSSProperties> = {
     gridRow: {
         flex: 1,
         display: "flex",
-        borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+        borderBottom: "1px solid rgba(255, 255, 255, 0.025)",
         position: "relative",
     },
     gridCell: {
         flex: 1,
-        borderRight: "1px solid rgba(255, 255, 255, 0.05)",
+        borderRight: "1px solid rgba(255, 255, 255, 0.025)",
         appearance: "none",
         minWidth: 0,
         padding: 0,
@@ -1451,9 +1461,10 @@ const styles: Record<string, React.CSSProperties> = {
         borderRadius: "4px",
         display: "flex",
         alignItems: "center",
-        paddingLeft: "4px",
-        paddingRight: "4px",
-        fontSize: "9px",
+        justifyContent: "center",
+        paddingLeft: "8px",
+        paddingRight: "8px",
+        fontSize: "12px",
         fontWeight: "bold",
         color: "var(--foreground)",
         transition: "box-shadow 0.1s",
@@ -1472,12 +1483,5 @@ const styles: Record<string, React.CSSProperties> = {
         background: "rgba(255, 255, 255, 0.3)",
         cursor: "ew-resize",
         opacity: 0.7,
-    },
-    userTag: {
-        fontSize: "8px",
-        backgroundColor: "rgba(0, 0, 0, 0.4)",
-        padding: "0 4px",
-        borderRadius: "2px",
-        marginRight: "4px",
     },
 };

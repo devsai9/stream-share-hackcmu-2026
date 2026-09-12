@@ -34,6 +34,30 @@ body {
     margin: 0;
 }
 
+.editor-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) #1a0d08;
+}
+
+.editor-scrollbar::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.editor-scrollbar::-webkit-scrollbar-track {
+    background: #1a0d08;
+}
+
+.editor-scrollbar::-webkit-scrollbar-thumb {
+    border: 2px solid #1a0d08;
+    border-radius: 6px;
+    background: var(--secondary);
+}
+
+.editor-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--accent);
+}
+
 a {
     color: inherit;
     text-decoration: none;
