@@ -57,12 +57,44 @@
     font-size: 0.8rem;
 }
 
+.headerActions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-shrink: 0;
+}
+
 .identityDot {
     width: 0.45rem;
     height: 0.45rem;
     border-radius: 50%;
     background: var(--accent);
     box-shadow: 0 0 0 3px rgb(210 131 42 / 16%);
+}
+
+.signOut {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    border: 1px solid var(--primary);
+    padding: 0.65rem 0.8rem;
+    background: transparent;
+    color: var(--foreground);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.signOut:hover,
+.signOut:focus-visible {
+    background: var(--primary);
+    outline: none;
+}
+
+.signOut:disabled {
+    cursor: wait;
+    opacity: 0.6;
 }
 
 .projectsSection {
@@ -403,6 +435,16 @@
     .identity {
         width: fit-content;
         margin-top: 2rem;
+    }
+
+    .headerActions {
+        align-items: flex-start;
+        flex-direction: column;
+        margin-top: 2rem;
+    }
+
+    .identity {
+        margin-top: 0;
     }
 
     .emptyState {

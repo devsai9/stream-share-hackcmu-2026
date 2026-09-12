@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { Play, Pause, Square, Mic, Music2, Plus, Users, Trash2 } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, Play, Pause, Square, Mic, Music2, Plus, Users, Trash2 } from "lucide-react";
 import { getUser } from "../../lib/auth";
 import { getTracks, createTrack, renameTrack, deleteTrack, getTrackNotes, replaceTrackNotes, type Track } from "../../lib/editor";
 import { loadProject, type Project } from "../../lib/projects";
@@ -39,6 +39,7 @@ interface TrackContextMenuState {
 }
 
 export default function EditorPage() {
+    const router = useRouter();
     const searchParams = useSearchParams();
     const projectId = searchParams.get("projectId");
     const [project, setProject] = useState<Project | null>(null);
@@ -518,6 +519,15 @@ export default function EditorPage() {
         <div style={styles.pageContainer}>
             {/* 1. TOP CONTROL BAR */}
             <header style={styles.header}>
+                <button
+                    type="button"
+                    onClick={() => router.push("/projects")}
+                    style={styles.backButton}
+                    aria-label="Back to projects"
+                    title="Back to projects"
+                >
+                    <ArrowLeft size={17} />
+                </button>
                 {/* Transport Controls */}
                 <div style={styles.flexCenterGap3}>
                     <button
@@ -844,6 +854,17 @@ const styles: Record<string, React.CSSProperties> = {
         justifyContent: "space-between",
         paddingLeft: "16px",
         paddingRight: "16px",
+    },
+    backButton: {
+        padding: "8px",
+        borderRadius: "4px",
+        border: "1px solid var(--secondary)",
+        background: "transparent",
+        color: "var(--foreground)",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
     },
     flexCenterGap3: {
         display: "flex",

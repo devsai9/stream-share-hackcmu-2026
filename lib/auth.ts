@@ -21,6 +21,10 @@ export function getUser(): ReturnType<typeof supabase.auth.getUser> {
     return supabase.auth.getUser();
 }
 
+export function signOut(): ReturnType<typeof supabase.auth.signOut> {
+    return supabase.auth.signOut();
+}
+
 export async function getUidFromEmail(email: string): Promise<string> {
     const { data, error } = await supabase.rpc("get_uid_from_email", {
         input_email: email.trim(),
