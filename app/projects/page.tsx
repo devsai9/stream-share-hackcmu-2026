@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowUpRight, Ellipsis, Music2, Plus, Share2, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowUpRight, Ellipsis, LogOut, Music2, Plus, Share2, X } from "lucide-react";
 
-import { getUidFromEmail, getUser } from "../../lib/auth";
+import { getUidFromEmail, getUser, signOut } from "../../lib/auth";
 import { createProject, getProjects, shareProject, type Project } from "../../lib/projects";
 
 import styles from "./page.module.css";
@@ -13,6 +14,7 @@ function getDisplayName(email: string | undefined) {
 }
 
 export default function ProjectsPage() {
+    const router = useRouter();
     const [projects, setProjects] = useState<Project[]>([]);
     const [email, setEmail] = useState<string>();
     const [loading, setLoading] = useState(true);
@@ -27,6 +29,7 @@ export default function ProjectsPage() {
     const [shareEmail, setShareEmail] = useState("");
     const [sharing, setSharing] = useState(false);
     const [shareMessage, setShareMessage] = useState<string | null>(null);
+    const [signingOut, setSigningOut] = useState(false);
 
     useEffect(() => {
         async function loadProjects() {
@@ -108,6 +111,23 @@ export default function ProjectsPage() {
         }
     }
 
+    async function handleSignOut() {
+        setSigningOut(true);
+
+        try {
+            const { error: signOutError } = await signOut();
+            if (signOutError) throw signOutError;
+            router.push("/auth");
+        } catch (signOutError) {
+            setError(
+                signOutError instanceof Error
+                    ? signOutError.message
+                    : "We could not sign you out. Please try again.",
+            );
+            setSigningOut(false);
+        }
+    }
+
     return (
         <main className={styles.page}>
             <div className={styles.content}>
@@ -119,9 +139,15 @@ export default function ProjectsPage() {
                             Pick a project and jump into the session.
                         </p>
                     </div>
-                    <div className={styles.identity} aria-label={email || "Signed in user"}>
-                        <span className={styles.identityDot} />
-                        {getDisplayName(email)}
+                    <div className={styles.headerActions}>
+                        <div className={styles.identity} aria-label={email || "Signed in user"}>
+                            <span className={styles.identityDot} />
+                            {getDisplayName(email)}
+                        </div>
+                        <button className={styles.signOut} type="button" onClick={() => void handleSignOut()} disabled={signingOut}>
+                            <LogOut size={16} aria-hidden="true" />
+                            {signingOut ? "Signing out..." : "Sign out"}
+                        </button>
                     </div>
                 </header>
 
