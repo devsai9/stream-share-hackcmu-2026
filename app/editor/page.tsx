@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation";
 import { Play, Pause, Square, Mic, Music2, Plus, Users, Trash2 } from "lucide-react";
 import { getUser } from "../../lib/auth";
-import { getTracks, createTrack, getTrackNotes, replaceTrackNotes, type Track } from "../../lib/editor";
+import { getTracks, createTrack, deleteTrack, getTrackNotes, replaceTrackNotes, type Track } from "../../lib/editor";
 import { loadProject, type Project } from "../../lib/projects";
 import { useAudioEngine } from "../../hooks/useAudioEngine";
 import { useRealTimeSync } from "../../hooks/useRealTimeSync";
@@ -70,10 +70,47 @@ export default function EditorPage() {
     };
   }, [user]);
 
-  const { peers, isConnected, broadcastNotes } = useRealTimeSync({
+  const handleRemoteTrackAdded = useCallback((track: Track) => {
+    setTracks((currentTracks) =>
+      currentTracks.some((currentTrack) => currentTrack.id === track.id)
+        ? currentTracks
+        : [...currentTracks, track],
+    );
+  }, []);
+
+  const handleRemoteTrackDeleted = useCallback((trackId: string) => {
+    setTracks((currentTracks) => currentTracks.filter((track) => track.id !== trackId));
+    setActiveTrackId((currentTrackId) => currentTrackId === trackId ? null : currentTrackId);
+  }, []);
+
+  const handleRemoteNoteAdded = useCallback((trackId: string, note: NoteBlock) => {
+    if (trackId !== activeTrackId) return;
+    setNotes((currentNotes) =>
+      currentNotes.some((currentNote) => currentNote.id === note.id)
+        ? currentNotes
+        : [...currentNotes, note].sort((first, second) => first.startStep - second.startStep),
+    );
+  }, [activeTrackId]);
+
+  const handleRemoteNoteRemoved = useCallback((trackId: string, noteId: string) => {
+    if (trackId !== activeTrackId) return;
+    setNotes((currentNotes) => currentNotes.filter((note) => note.id !== noteId));
+  }, [activeTrackId]);
+
+  const {
+    peers,
+    isConnected,
+    broadcastTrackAdded,
+    broadcastTrackDeleted,
+    broadcastNoteAdded,
+    broadcastNoteRemoved,
+  } = useRealTimeSync({
     roomId: projectId ?? "",
     user: presence ?? { userId: "", userName: "", color: "" },
-    onNotesUpdated: setNotes,
+    onTrackAdded: handleRemoteTrackAdded,
+    onTrackDeleted: handleRemoteTrackDeleted,
+    onNoteAdded: handleRemoteNoteAdded,
+    onNoteRemoved: handleRemoteNoteRemoved,
   });
 
   useEffect(() => {
@@ -142,13 +179,8 @@ export default function EditorPage() {
   const updateNotes = useCallback(async (nextNotes: NoteBlock[]) => {
     setNotes(nextNotes);
 
-    try {
-      await persistNotes(nextNotes);
-      await broadcastNotes(nextNotes);
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Could not save notes.");
-    }
-  }, [broadcastNotes, persistNotes]);
+    await persistNotes(nextNotes);
+  }, [persistNotes]);
 
   function addNote(pitch: string, startStep: number) {
     const note: NoteBlock = {
@@ -160,13 +192,56 @@ export default function EditorPage() {
     };
 
     void playPreview(note.pitch);
-    void updateNotes([...notes, note]);
+    void updateNotes([...notes, note])
+      .then(() => {
+        if (activeTrackId) return broadcastNoteAdded(activeTrackId, note);
+      })
+      .catch((saveError) => {
+        setError(saveError instanceof Error ? saveError.message : "Could not save note.");
+      });
   }
 
   const deleteNote = useCallback((noteId: string) => {
     setSelectedNoteId(null);
-    void updateNotes(notes.filter((note) => note.id !== noteId));
-  }, [notes, updateNotes]);
+    void updateNotes(notes.filter((note) => note.id !== noteId))
+      .then(() => {
+        if (activeTrackId) return broadcastNoteRemoved(activeTrackId, noteId);
+      })
+      .catch((saveError) => {
+        setError(saveError instanceof Error ? saveError.message : "Could not remove note.");
+      });
+  }, [activeTrackId, broadcastNoteRemoved, notes, updateNotes]);
+
+  const addTrack = useCallback(() => {
+    if (!projectId) return;
+
+    void createTrack(projectId, `Track ${tracks.length + 1}`, tracks.length)
+      .then((track) => {
+        setTracks((currentTracks) => [...currentTracks, track]);
+        setActiveTrackId(track.id);
+        return broadcastTrackAdded(track);
+      })
+      .catch((saveError) => {
+        setError(saveError instanceof Error ? saveError.message : "Could not add track.");
+      });
+  }, [broadcastTrackAdded, projectId, tracks.length]);
+
+  const removeTrack = useCallback((trackId: string) => {
+    void deleteTrack(trackId)
+      .then(() => {
+        setTracks((currentTracks) => {
+          const nextTracks = currentTracks.filter((track) => track.id !== trackId);
+          setActiveTrackId((currentTrackId) =>
+            currentTrackId === trackId ? nextTracks[0]?.id ?? null : currentTrackId,
+          );
+          return nextTracks;
+        });
+        return broadcastTrackDeleted(trackId);
+      })
+      .catch((saveError) => {
+        setError(saveError instanceof Error ? saveError.message : "Could not delete track.");
+      });
+  }, [broadcastTrackDeleted]);
 
   function beginNoteResize(event: React.PointerEvent<HTMLButtonElement>, note: NoteBlock) {
     const grid = gridRef.current;
@@ -241,7 +316,6 @@ export default function EditorPage() {
       );
 
       setNotes(nextNotes);
-      void broadcastNotes(nextNotes);
     }
 
     function finishNoteDrag() {
@@ -252,7 +326,6 @@ export default function EditorPage() {
       void persistNotes(draggedNotes).catch((saveError) => {
         setError(saveError instanceof Error ? saveError.message : "Could not save notes.");
       });
-      void broadcastNotes(draggedNotes);
       setDragState(null);
     }
 
@@ -263,7 +336,7 @@ export default function EditorPage() {
       window.removeEventListener("pointermove", moveNote);
       window.removeEventListener("pointerup", finishNoteDrag);
     };
-  }, [broadcastNotes, dragState, notes, persistNotes]);
+  }, [dragState, notes, persistNotes]);
 
   useEffect(() => {
     if (!resizeState) return;
@@ -296,7 +369,6 @@ export default function EditorPage() {
         void persistNotes(finishedNotes).catch((saveError) => {
           setError(saveError instanceof Error ? saveError.message : "Could not save note length.");
         });
-        void broadcastNotes(finishedNotes);
         return finishedNotes;
       });
       setResizeState(null);
@@ -308,7 +380,7 @@ export default function EditorPage() {
       window.removeEventListener("pointermove", resizeNote);
       window.removeEventListener("pointerup", finishResize);
     };
-  }, [broadcastNotes, persistNotes, resizeState]);
+  }, [persistNotes, resizeState]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -455,6 +527,18 @@ export default function EditorPage() {
                 <div style={styles.trackControls}>
                   <span>M</span> <span>S</span>
                   <input type="range" style={styles.slider} />
+                  <button
+                    type="button"
+                    aria-label={`Delete ${track.name}`}
+                    title={`Delete ${track.name}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      removeTrack(track.id);
+                    }}
+                    style={styles.trackDeleteButton}
+                  >
+                    <Trash2 size={12} />
+                  </button>
                 </div>
               </div>
 
@@ -480,7 +564,7 @@ export default function EditorPage() {
             </div>
           ))}
 
-          <button style={styles.addTrackButton} onClick={() => setError("Track creation UI is next.")}>
+          <button style={styles.addTrackButton} onClick={addTrack}>
             <Plus size={14} /> Add Track
           </button>
         </div>
@@ -813,6 +897,15 @@ const styles: Record<string, React.CSSProperties> = {
     width: "64px",
     height: "4px",
     accentColor: "var(--primary)",
+  },
+  trackDeleteButton: {
+    display: "grid",
+    placeItems: "center",
+    padding: "3px",
+    border: "none",
+    background: "transparent",
+    color: "#a8adb5",
+    cursor: "pointer",
   },
   timelineLane: {
     flex: 1,
