@@ -47,6 +47,7 @@ interface ResizeState {
 }
 
 interface NoteCreationState {
+    noteId: string;
     pitch: string;
     startStep: number;
     currentStep: number;
@@ -305,7 +306,7 @@ export default function EditorPage() {
     function beginNoteCreation(event: React.PointerEvent<HTMLButtonElement>, pitch: string, startStep: number) {
         event.preventDefault();
         event.stopPropagation();
-        setNoteCreationState({ pitch, startStep, currentStep: startStep });
+        setNoteCreationState({ noteId: crypto.randomUUID(), pitch, startStep, currentStep: startStep });
         void playPreview(pitch);
         event.currentTarget.setPointerCapture(event.pointerId);
     }
@@ -322,9 +323,24 @@ export default function EditorPage() {
             0,
             Math.min(MIDI_TOTAL_STEPS - 1, Math.floor((event.clientX - rect.left) / stepWidth)),
         );
-        setNoteCreationState((currentState) => currentState
-            ? { ...currentState, currentStep }
-            : currentState);
+        const nextState = { ...noteCreationState, currentStep };
+        setNoteCreationState(nextState);
+
+        const placement = getNotePlacement(nextState.pitch, nextState.startStep, nextState.currentStep);
+        const previewNotes = notes.filter((note) => note.id !== nextState.noteId);
+        if (placement) {
+            previewNotes.push({
+                id: nextState.noteId,
+                pitch: nextState.pitch,
+                startStep: placement.startStep,
+                duration: placement.duration,
+                userId: user?.id,
+                isDragging: true,
+            });
+        }
+        void broadcastNotes(previewNotes).catch((broadcastError) => {
+            setError(broadcastError instanceof Error ? broadcastError.message : "Could not sync MIDI note creation.");
+        });
     }
 
     function finishNoteCreation(event: React.PointerEvent<HTMLButtonElement>) {
@@ -342,7 +358,7 @@ export default function EditorPage() {
         if (!placement) return;
 
         const note: NoteBlock = {
-            id: crypto.randomUUID(),
+            id: noteCreationState.noteId,
             pitch: noteCreationState.pitch,
             startStep: placement.startStep,
             duration: placement.duration,
@@ -354,6 +370,7 @@ export default function EditorPage() {
 
     function cancelNoteCreation() {
         setNoteCreationState(null);
+        void broadcastNotes(notes);
     }
 
     async function addTrack() {
