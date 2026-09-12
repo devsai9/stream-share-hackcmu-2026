@@ -1,7 +1,7 @@
 import { supabase } from "./supabase/client";
 // import { auth } from "./auth";
 
-type Project = {
+export type Project = {
     id: number;
     name: string;
     description: string;
