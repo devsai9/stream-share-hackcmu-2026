@@ -19,7 +19,7 @@ import {
     type MidiBlock,
     type Track,
 } from "../../lib/editor";
-import { loadProject, updateProjectBpm, type Project } from "../../lib/projects";
+import { loadProject, updateProject, updateProjectBpm, type Project } from "../../lib/projects";
 import { useAudioEngine } from "../../hooks/useAudioEngine";
 import {
     useRealTimeSync,
@@ -90,6 +90,8 @@ export default function EditorPage() {
     const [deletingBlockId, setDeletingBlockId] = useState<string | null>(null);
     const [renamingTrackId, setRenamingTrackId] = useState<string | null>(null);
     const [renameValue, setRenameValue] = useState("");
+    const [renamingProject, setRenamingProject] = useState(false);
+    const [projectNameValue, setProjectNameValue] = useState("");
     const [trackContextMenu, setTrackContextMenu] = useState<TrackContextMenuState | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [dragState, setDragState] = useState<DragState | null>(null);
@@ -526,6 +528,36 @@ export default function EditorPage() {
         }
     }
 
+    function beginProjectRename() {
+        if (!project) return;
+        setProjectNameValue(project.name);
+        setRenamingProject(true);
+    }
+
+    async function saveProjectRename() {
+        if (!project) return;
+
+        const name = projectNameValue.trim();
+        if (!name) {
+            setProjectNameValue(project.name);
+            setRenamingProject(false);
+            return;
+        }
+
+        if (name === project.name) {
+            setRenamingProject(false);
+            return;
+        }
+
+        try {
+            const renamedProject = await updateProject(project.id, name, project.description ?? "");
+            setProject(renamedProject);
+            setRenamingProject(false);
+        } catch (renameError) {
+            setError(renameError instanceof Error ? renameError.message : "Could not rename project.");
+        }
+    }
+
     async function removeTrack(track: Track) {
         if (deletingTrackId) return;
 
@@ -916,9 +948,33 @@ export default function EditorPage() {
                 </div>
 
                 {/* Project Details */}
-                <div style={styles.projectTitle}>
+                <div
+                    style={styles.projectTitle}
+                    onDoubleClick={beginProjectRename}
+                    title={renamingProject ? undefined : "Double-click to rename project"}
+                >
                     <Image src="/icon.svg" alt="" width={20} height={20} style={styles.projectIcon} />
-                    {project?.name ?? "Realtime Session"}
+                    {renamingProject ? (
+                        <input
+                            autoFocus
+                            type="text"
+                            value={projectNameValue}
+                            onChange={(event) => setProjectNameValue(event.target.value)}
+                            onClick={(event) => event.stopPropagation()}
+                            onKeyDown={(event) => {
+                                if (event.key === "Enter") void saveProjectRename();
+                                if (event.key === "Escape") {
+                                    setProjectNameValue(project?.name ?? "");
+                                    setRenamingProject(false);
+                                }
+                            }}
+                            onBlur={() => void saveProjectRename()}
+                            aria-label="Project name"
+                            style={styles.projectNameInput}
+                        />
+                    ) : (
+                        project?.name ?? "Realtime Session"
+                    )}
                 </div>
 
                 {/* Multiplayer Presence */}
@@ -1524,6 +1580,19 @@ const styles: Record<string, React.CSSProperties> = {
         height: "20px",
         flexShrink: 0,
         borderRadius: "5px",
+    },
+    projectNameInput: {
+        width: "min(280px, 30vw)",
+        minWidth: "120px",
+        border: "1px solid var(--accent)",
+        borderRadius: "3px",
+        padding: "5px 8px",
+        background: "#101214",
+        color: "var(--foreground)",
+        font: "inherit",
+        fontSize: "14px",
+        fontWeight: 600,
+        outline: "none",
     },
     backButton: {
         padding: "8px",
