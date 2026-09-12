@@ -3,7 +3,8 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { createClient } from "../../lib/supabase/client";
+import { supabase } from "../../lib/supabase/client";
+import { login, signup } from "../../lib/auth";
 
 import styles from "./page.module.css";
 
@@ -11,7 +12,6 @@ type Mode = "login" | "signup";
 
 export default function AuthPage() {
   const router = useRouter();
-  const supabase = createClient();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -33,19 +33,13 @@ export default function AuthPage() {
 
     try {
       if (mode === "login") {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+        const { error: signInError } = await login(email, password);
 
         if (signInError) throw signInError;
         router.push("/editor");
         router.refresh();
       } else {
-        const { data, error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
-        });
+        const { data, error: signUpError } = await signup(email, password);
 
         if (signUpError) throw signUpError;
 
