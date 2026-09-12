@@ -1,11 +1,8 @@
 import { supabase } from "./supabase/client";
-// import { auth } from "./auth";
+import { getUser } from "./auth";
+import type { Tables } from "./supabase/supabase";
 
-type Project = {
-    id: number;
-    name: string;
-    description: string;
-}
+type Project = Pick<Tables<"projects">, "id" | "name" | "description">;
 
 export async function getProjects(): Promise<Project[]> {
     const { data, error } = await supabase
@@ -20,31 +17,61 @@ export async function getProjects(): Promise<Project[]> {
 }
 
 export async function createProject(name: string, description: string): Promise<Project> {
-    // const { data, error } = await supabase
-    //     .from("projects")
-    //     .insert({
-    //         name,
-    //         description,
-    //     })
-    //     .select()
-    //     .single();
+    const { data: userData, error: userError } = await getUser();
 
-    // if (error) {
-    //     throw error;
-    // }
+    if (userError) {
+        throw userError;
+    }
 
-    // return data;
-    return new Promise((resolve) => {
-        resolve({ id: 1, name, description });
-    });
+    if (!userData.user) {
+        throw new Error("You must be signed in to create a project.");
+    }
+
+    const { data: project, error: projectError } = await supabase
+        .from("projects")
+        .insert({
+            id: crypto.randomUUID(),
+            name,
+            description,
+        })
+        .select("id, name, description")
+        .single();
+
+    if (projectError) {
+        throw projectError;
+    }
+
+    const { error: memberError } = await supabase
+        .from("project_members")
+        .insert({ project_id: project.id, user_id: userData.user.id });
+
+    if (memberError) {
+        throw memberError;
+    }
+
+    return project;
 }
 
-export async function updateProject(id: number, name: string, description: string): Promise<Project> {
-    return new Promise((resolve) => {
-        resolve({ id, name, description });
-    });
+export async function updateProject(id: string, name: string, description: string): Promise<Project> {
+    const { data, error } = await supabase
+        .from("projects")
+        .update({ name, description })
+        .eq("id", id)
+        .select("id, name, description")
+        .single();
+
+    if (error) {
+        throw error;
+    }
+
+    return data;
 }
 
-export async function deleteProject(id: number): Promise<void> {
+export async function shareProject(id: string, email: string): Promise<void> {
+    void id;
+    void email;
+    throw new Error(
+        "Sharing by email requires a server-side email-to-user-ID lookup. " +
+        "Add a public profile table or a Supabase RPC before inserting into project_members.",
+    );
 }
-
