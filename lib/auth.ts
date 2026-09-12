@@ -16,3 +16,7 @@ export function signup(email: string, password: string): ReturnType<typeof supab
         password,
     });
 }
+
+export function getUser(): ReturnType<typeof supabase.auth.getUser> {
+    return supabase.auth.getUser();
+}
