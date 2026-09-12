@@ -1,5 +1,5 @@
-# StreamShare
-StreamShare is a collaborative MIDI editor, inspired from Bandlab and Google Docs-like live editing.
+# WavSync
+WavSync is a collaborative MIDI editor, inspired from Bandlab and Google Docs-like live editing.
 
 ## Tech Stack:
 - Next.js
