@@ -36,17 +36,6 @@ export async function createTrack(
     return data;
 }
 
-export async function deleteTrack(trackId: string): Promise<void> {
-    const { error } = await supabase
-        .from("tracks")
-        .delete()
-        .eq("id", trackId);
-
-    if (error) {
-        throw error;
-    }
-}
-
 export async function getTrackNotes(trackId: string): Promise<NoteBlock[]> {
     const { data, error } = await supabase
         .from("notes")
