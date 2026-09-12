@@ -13,6 +13,43 @@ const TRACK_DELETED_EVENT = "track-deleted";
 const BLOCK_ADDED_EVENT = "block-added";
 const BLOCK_DELETED_EVENT = "block-deleted";
 const BLOCK_MOVED_EVENT = "block-moved";
+const PRESENCE_COLORS = [
+	"#e76f51",
+	"#2a9d8f",
+	"#457b9d",
+	"#e9c46a",
+	"#8ab17d",
+	"#b56576",
+	"#118ab2",
+	"#f4a261",
+	"#6d597a",
+	"#43aa8b",
+	"#ef476f",
+	"#577590",
+];
+
+function getPreferredColor(userId: string): string {
+	let hash = 0;
+	for (const character of userId) {
+		hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+	}
+	return PRESENCE_COLORS[hash % PRESENCE_COLORS.length];
+}
+
+function assignPresenceColor(user: PeerPresence, existingPresences: PeerPresence[]): PeerPresence {
+	const usedColors = new Set(existingPresences.map((presence) => presence.color));
+	const preferredColor = getPreferredColor(user.userId);
+	const preferredIndex = PRESENCE_COLORS.indexOf(preferredColor);
+
+	for (let offset = 0; offset < PRESENCE_COLORS.length; offset += 1) {
+		const color = PRESENCE_COLORS[(preferredIndex + offset) % PRESENCE_COLORS.length];
+		if (!usedColors.has(color)) {
+			return { ...user, color };
+		}
+	}
+
+	return { ...user, color: preferredColor };
+}
 
 export interface TrackAddedPayload {
 	track: Track;
@@ -39,6 +76,7 @@ export interface UseRealTimeSyncOptions {
 
 export interface UseRealTimeSyncReturn {
 	peers: PeerPresence[];
+	localPresence: PeerPresence;
 	isConnected: boolean;
 	broadcastNotes: (notes: NoteBlock[]) => Promise<void>;
 	broadcastCursor: (cursorStep: number | undefined) => Promise<void>;
@@ -65,6 +103,7 @@ export function useRealTimeSync({
 }: UseRealTimeSyncOptions): UseRealTimeSyncReturn {
 	const [peers, setPeers] = useState<PeerPresence[]>([]);
 	const [isConnected, setIsConnected] = useState(false);
+	const [localPresence, setLocalPresence] = useState(user);
 	const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 	const callbacksRef = useRef({
 		onNotesUpdated,
@@ -166,7 +205,10 @@ export function useRealTimeSync({
 			})
 			.subscribe(async (status) => {
 				if (status === "SUBSCRIBED") {
-					await channel.track(user);
+						const existingPresences = Object.values(channel.presenceState<PeerPresence>()).flat();
+						const assignedPresence = assignPresenceColor(user, existingPresences);
+						setLocalPresence(assignedPresence);
+						await channel.track(assignedPresence);
 					setIsConnected(true);
 				} else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
 					setIsConnected(false);
@@ -177,6 +219,7 @@ export function useRealTimeSync({
 			channelRef.current = null;
 			setIsConnected(false);
 			setPeers([]);
+			setLocalPresence(user);
 			void supabase.removeChannel(channel);
 		};
 	}, [roomId, user]);
@@ -196,14 +239,14 @@ export function useRealTimeSync({
 		const channel = channelRef.current;
 		if (!channel || !isConnected) return;
 
-		const presence = { ...user, cursorStep };
+		const presence = { ...localPresence, cursorStep };
 		await channel.track(presence);
 		await channel.send({
 			type: "broadcast",
 			event: CURSOR_EVENT,
 			payload: { senderId: user.userId, presence },
 		});
-	}, [isConnected, user]);
+	}, [isConnected, localPresence, user.userId]);
 
 	const broadcastTrackAdded = useCallback(async (payload: TrackAddedPayload) => {
 		const channel = channelRef.current;
@@ -273,6 +316,7 @@ export function useRealTimeSync({
 
 	return {
 		peers,
+		localPresence,
 		isConnected,
 		broadcastNotes,
 		broadcastCursor,

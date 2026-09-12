@@ -185,6 +185,7 @@ export default function EditorPage() {
 
     const {
         peers,
+        localPresence,
         isConnected,
         broadcastNotes,
         broadcastTrackAdded,
@@ -841,9 +842,20 @@ export default function EditorPage() {
                         <span>{peers.length + 1} Active</span>
                     </div>
                     <div style={{ display: "flex", marginInline: "-4px" }}>
-                        <div style={{ ...styles.avatar, background: "var(--primary)" }}>You</div>
+                        <div
+                            title={localPresence.userName}
+                            aria-label={localPresence.userName}
+                            style={{ ...styles.avatar, background: localPresence.color }}
+                        >
+                            You
+                        </div>
                         {peers.slice(0, 3).map((peer) => (
-                            <div key={peer.userId} style={{ ...styles.avatar, background: peer.color, marginLeft: "-8px" }}>
+                            <div
+                                key={peer.userId}
+                                title={peer.userName}
+                                aria-label={peer.userName}
+                                style={{ ...styles.avatar, background: peer.color, marginLeft: "-8px" }}
+                            >
                                 {peer.userName.slice(0, 2).toUpperCase()}
                             </div>
                         ))}
