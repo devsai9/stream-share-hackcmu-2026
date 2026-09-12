@@ -696,6 +696,8 @@ export default function EditorPage() {
                     snappedStartStep,
                 ),
             );
+            if (nextStartStep === activeClipDrag.currentStartStep) return;
+
             const nextEndStep = nextStartStep + draggedBlock.length_steps;
             const overlapsAnotherBlock = blocks.some((block) =>
                 block.track_id === activeClipDrag.trackId &&
@@ -706,12 +708,16 @@ export default function EditorPage() {
 
             if (overlapsAnotherBlock) return;
 
+            const movedBlock = { ...draggedBlock, start_step: nextStartStep };
             setBlocks((currentBlocks) => currentBlocks.map((block) =>
-                block.id === activeClipDrag.blockId ? { ...block, start_step: nextStartStep } : block,
+                block.id === activeClipDrag.blockId ? movedBlock : block,
             ));
             setClipDragState((currentState) => currentState
                 ? { ...currentState, currentStartStep: nextStartStep }
                 : currentState);
+            void broadcastBlockMoved(movedBlock).catch((broadcastError) => {
+                setError(broadcastError instanceof Error ? broadcastError.message : "Could not sync MIDI block movement.");
+            });
         }
 
         async function finishClipDrag() {
