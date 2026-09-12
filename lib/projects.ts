@@ -5,6 +5,13 @@ import type { Tables } from "./supabase/supabase";
 export type Project = Pick<Tables<"projects">, "id" | "name" | "description" | "bpm">;
 export type ProjectMember = Pick<Tables<"profiles">, "id" | "email">;
 
+export class ProjectAccessError extends Error {
+    constructor() {
+        super("You do not have access to this project.");
+        this.name = "ProjectAccessError";
+    }
+}
+
 export async function getProjectMembers(projectId: string, excludeUserId?: string): Promise<ProjectMember[]> {
     const { data: memberships, error: membershipError } = await supabase
         .from("project_members")
@@ -167,6 +174,31 @@ export async function removeProjectMember(projectId: string, userId: string): Pr
 }
 
 export async function loadProject(id: string): Promise<Project> {
+    const { data: userData, error: userError } = await getUser();
+
+    if (userError) {
+        throw userError;
+    }
+
+    if (!userData.user) {
+        throw new Error("You must be signed in to open the editor.");
+    }
+
+    const { data: membership, error: membershipError } = await supabase
+        .from("project_members")
+        .select("user_id")
+        .eq("project_id", id)
+        .eq("user_id", userData.user.id)
+        .maybeSingle();
+
+    if (membershipError) {
+        throw membershipError;
+    }
+
+    if (!membership) {
+        throw new ProjectAccessError();
+    }
+
     const { data, error } = await supabase
         .from("projects")
         .select("id, name, description, bpm")
