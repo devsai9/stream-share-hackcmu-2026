@@ -64,7 +64,7 @@ export interface BlockDeletedPayload {
 export interface UseRealTimeSyncOptions {
 	roomId: string;
 	user: PeerPresence;
-	onNotesUpdated?: (notes: NoteBlock[], mover?: PeerPresence) => void;
+	onNotesUpdated?: (notes: NoteBlock[]) => void;
 	onCursorMoved?: (presence: PeerPresence) => void;
 	onTrackAdded?: (payload: TrackAddedPayload) => void;
 	onTrackRenamed?: (track: Track) => void;
@@ -78,7 +78,7 @@ export interface UseRealTimeSyncReturn {
 	peers: PeerPresence[];
 	localPresence: PeerPresence;
 	isConnected: boolean;
-	broadcastNotes: (notes: NoteBlock[], mover?: PeerPresence) => Promise<void>;
+	broadcastNotes: (notes: NoteBlock[], mover?: PeerPresence, movingNoteId?: string) => Promise<void>;
 	broadcastCursor: (cursorStep: number | undefined) => Promise<void>;
 	broadcastTrackAdded: (payload: TrackAddedPayload) => Promise<void>;
 	broadcastTrackRenamed: (track: Track) => Promise<void>;
@@ -154,10 +154,7 @@ export function useRealTimeSync({
 					payload?.senderId !== user.userId &&
 					Array.isArray(payload?.notes)
 				) {
-					callbacksRef.current.onNotesUpdated?.(
-						payload.notes as NoteBlock[],
-						payload.mover as PeerPresence | undefined,
-					);
+					callbacksRef.current.onNotesUpdated?.(payload.notes as NoteBlock[]);
 				}
 			})
 			.on("broadcast", { event: CURSOR_EVENT }, ({ payload }) => {
@@ -230,14 +227,29 @@ export function useRealTimeSync({
 		};
 	}, [roomId, user]);
 
-	const broadcastNotes = useCallback(async (notes: NoteBlock[], mover?: PeerPresence) => {
+	const broadcastNotes = useCallback(async (
+		notes: NoteBlock[],
+		mover?: PeerPresence,
+		movingNoteId?: string,
+	) => {
 		const channel = channelRef.current;
 		if (!channel || !isConnected) return;
+
+		const notesToBroadcast = mover && movingNoteId
+			? notes.map((note) => note.id === movingNoteId && note.isDragging
+				? {
+					...note,
+					movingUserId: mover.userId,
+					movingUserEmail: mover.userName,
+					movingUserColor: mover.color,
+				}
+				: note)
+			: notes;
 
 		await channel.send({
 			type: "broadcast",
 			event: NOTES_EVENT,
-			payload: { senderId: user.userId, notes, mover },
+			payload: { senderId: user.userId, notes: notesToBroadcast },
 		});
 	}, [isConnected, user.userId]);
 

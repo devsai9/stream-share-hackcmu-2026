@@ -183,21 +183,8 @@ export default function EditorPage() {
         ));
     }, []);
 
-    const handleNotesUpdated = useCallback((nextNotes: NoteBlock[], mover?: PeerPresence) => {
-        setNotes(nextNotes.map((note) => mover && note.isDragging
-            ? {
-                ...note,
-                movingUserId: mover.userId,
-                movingUserEmail: mover.userName,
-                movingUserColor: mover.color,
-            }
-            : {
-                ...note,
-                movingUserId: undefined,
-                movingUserEmail: undefined,
-                movingUserColor: undefined,
-            },
-        ));
+    const handleNotesUpdated = useCallback((nextNotes: NoteBlock[]) => {
+        setNotes(nextNotes);
     }, []);
 
     const {
@@ -356,7 +343,7 @@ export default function EditorPage() {
                 isDragging: true,
             });
         }
-        void broadcastNotes(previewNotes, localPresence).catch((broadcastError) => {
+        void broadcastNotes(previewNotes, localPresence, nextState.noteId).catch((broadcastError) => {
             setError(broadcastError instanceof Error ? broadcastError.message : "Could not sync MIDI note creation.");
         });
     }
@@ -597,7 +584,7 @@ export default function EditorPage() {
             );
 
             setNotes(nextNotes);
-            void broadcastNotes(nextNotes, localPresence);
+            void broadcastNotes(nextNotes, localPresence, activeDrag.noteId);
         }
 
         function finishNoteDrag() {
