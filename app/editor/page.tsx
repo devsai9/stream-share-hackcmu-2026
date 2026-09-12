@@ -176,6 +176,12 @@ export default function EditorPage() {
         });
     }, [activeBlockId]);
 
+    const handleBlockMoved = useCallback((movedBlock: MidiBlock) => {
+        setBlocks((currentBlocks) => currentBlocks.map((block) =>
+            block.id === movedBlock.id ? movedBlock : block,
+        ));
+    }, []);
+
     const {
         peers,
         isConnected,
@@ -185,6 +191,7 @@ export default function EditorPage() {
         broadcastTrackDeleted,
         broadcastBlockAdded,
         broadcastBlockDeleted,
+        broadcastBlockMoved,
     } = useRealTimeSync({
         roomId: projectId ?? "",
         user: presence ?? { userId: "", userName: "", color: "" },
@@ -194,6 +201,7 @@ export default function EditorPage() {
         onTrackDeleted: handleTrackDeleted,
         onBlockAdded: handleBlockAdded,
         onBlockDeleted: handleBlockDeleted,
+        onBlockMoved: handleBlockMoved,
     });
 
     useEffect(() => {
@@ -708,7 +716,10 @@ export default function EditorPage() {
 
         async function finishClipDrag() {
             try {
-                await updateMidiBlock(activeClipDrag.blockId, { start_step: activeClipDrag.currentStartStep });
+                const movedBlock = await updateMidiBlock(activeClipDrag.blockId, {
+                    start_step: activeClipDrag.currentStartStep,
+                });
+                await broadcastBlockMoved(movedBlock);
             } catch (moveError) {
                 setError(moveError instanceof Error ? moveError.message : "Could not move MIDI block.");
             }
@@ -721,7 +732,7 @@ export default function EditorPage() {
             window.removeEventListener("pointermove", moveClip);
             window.removeEventListener("pointerup", finishClipDrag);
         };
-    }, [blocks, clipDragState]);
+    }, [blocks, broadcastBlockMoved, clipDragState]);
 
     useEffect(() => {
         function closeTrackContextMenu() {
