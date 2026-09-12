@@ -4,7 +4,19 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Play, Pause, Square, Mic, Music2, Plus, Users, Trash2 } from "lucide-react";
 import { getUser } from "../../lib/auth";
-import { getTracks, createTrack, renameTrack, deleteTrack, getTrackNotes, replaceTrackNotes, type Track } from "../../lib/editor";
+import {
+    getTracks,
+    createTrack,
+    renameTrack,
+    deleteTrack,
+    getTrackBlocks,
+    createMidiBlock,
+    updateMidiBlock,
+    getBlockNotes,
+    replaceBlockNotes,
+    type MidiBlock,
+    type Track,
+} from "../../lib/editor";
 import { loadProject, type Project } from "../../lib/projects";
 import { useAudioEngine } from "../../hooks/useAudioEngine";
 import { useRealTimeSync } from "../../hooks/useRealTimeSync";
@@ -27,7 +39,7 @@ interface ResizeState {
 }
 
 interface ClipDragState {
-    trackId: string;
+    blockId: string;
     pointerStartStep: number;
     clipStartStep: number;
 }
@@ -45,6 +57,8 @@ export default function EditorPage() {
     const [project, setProject] = useState<Project | null>(null);
     const [tracks, setTracks] = useState<Track[]>([]);
     const [activeTrackId, setActiveTrackId] = useState<string | null>(null);
+    const [blocks, setBlocks] = useState<MidiBlock[]>([]);
+    const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
     const [notes, setNotes] = useState<NoteBlock[]>([]);
     const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
     const [loading, setLoading] = useState(true);
@@ -58,7 +72,6 @@ export default function EditorPage() {
     const [resizeState, setResizeState] = useState<ResizeState | null>(null);
     const [clipDragState, setClipDragState] = useState<ClipDragState | null>(null);
     const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
-    const [clipStartSteps, setClipStartSteps] = useState<Record<string, number>>({});
     const gridRef = useRef<HTMLDivElement>(null);
     const timelineRef = useRef<HTMLDivElement>(null);
 
@@ -114,8 +127,17 @@ export default function EditorPage() {
                     loadedTracks = [await createTrack(projectId, "Track 1", 0)];
                 }
 
+                const loadedBlocks = (await Promise.all(loadedTracks.map(async (track) => {
+                    const trackBlocks = await getTrackBlocks(track.id);
+                    return trackBlocks.length > 0
+                        ? trackBlocks
+                        : [await createMidiBlock(track.id, "MIDI Clip", 0, TOTAL_STEPS)];
+                }))).flat();
+
                 setTracks(loadedTracks);
+                setBlocks(loadedBlocks);
                 setActiveTrackId(loadedTracks[0].id);
+                setActiveBlockId(loadedBlocks.find((block) => block.track_id === loadedTracks[0].id)?.id ?? null);
             } catch (loadError) {
                 setError(loadError instanceof Error ? loadError.message : "Could not load the editor.");
             } finally {
@@ -127,29 +149,29 @@ export default function EditorPage() {
     }, [projectId]);
 
     useEffect(() => {
-        if (!activeTrackId) return;
-        const trackId = activeTrackId;
+        if (!activeBlockId) return;
+        const blockId = activeBlockId;
 
         async function loadNotes() {
             try {
-                setNotes(await getTrackNotes(trackId));
+                setNotes(await getBlockNotes(blockId));
             } catch (loadError) {
                 setError(loadError instanceof Error ? loadError.message : "Could not load notes.");
             }
         }
 
         void loadNotes();
-    }, [activeTrackId]);
+    }, [activeBlockId]);
 
     useEffect(() => {
         scheduleNotes(notes);
     }, [notes, scheduleNotes]);
 
     const persistNotes = useCallback(async (nextNotes: NoteBlock[]) => {
-        if (!activeTrackId || !user) return;
+        if (!activeBlockId || !user) return;
 
-        await replaceTrackNotes(activeTrackId, nextNotes, user.id);
-    }, [activeTrackId, user]);
+        await replaceBlockNotes(activeBlockId, nextNotes, user.id);
+    }, [activeBlockId, user]);
 
     const updateNotes = useCallback(async (nextNotes: NoteBlock[]) => {
         setNotes(nextNotes);
@@ -186,12 +208,32 @@ export default function EditorPage() {
 
         try {
             const track = await createTrack(projectId, trackName, tracks.length);
+            const block = await createMidiBlock(track.id, "MIDI Clip", 0, TOTAL_STEPS);
             setTracks((currentTracks) => [...currentTracks, track]);
+            setBlocks((currentBlocks) => [...currentBlocks, block]);
             setActiveTrackId(track.id);
+            setActiveBlockId(block.id);
         } catch (createError) {
             setError(createError instanceof Error ? createError.message : "Could not create track.");
         } finally {
             setCreatingTrack(false);
+        }
+    }
+
+    async function addBlock(track: Track) {
+        const trackBlocks = blocks.filter((block) => block.track_id === track.id);
+        const startStep = trackBlocks.reduce(
+            (latestEnd, block) => Math.max(latestEnd, block.start_step + block.length_steps),
+            0,
+        );
+
+        try {
+            const block = await createMidiBlock(track.id, `MIDI Clip ${trackBlocks.length + 1}`, startStep, TOTAL_STEPS);
+            setBlocks((currentBlocks) => [...currentBlocks, block]);
+            setActiveTrackId(track.id);
+            setActiveBlockId(block.id);
+        } catch (createError) {
+            setError(createError instanceof Error ? createError.message : "Could not create MIDI block.");
         }
     }
 
@@ -238,15 +280,13 @@ export default function EditorPage() {
                 const remainingTracks = currentTracks.filter((currentTrack) => currentTrack.id !== track.id);
                 if (activeTrackId === track.id) {
                     setActiveTrackId(remainingTracks[0]?.id ?? null);
+                    const nextBlock = blocks.find((block) => block.track_id === remainingTracks[0]?.id);
+                    setActiveBlockId(nextBlock?.id ?? null);
                     if (remainingTracks.length === 0) setNotes([]);
                 }
                 return remainingTracks;
             });
-            setClipStartSteps((current) => {
-                const next = { ...current };
-                delete next[track.id];
-                return next;
-            });
+            setBlocks((currentBlocks) => currentBlocks.filter((block) => block.track_id !== track.id));
         } catch (deleteError) {
             setError(deleteError instanceof Error ? deleteError.message : "Could not delete track.");
         } finally {
@@ -413,7 +453,7 @@ export default function EditorPage() {
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [deleteNote, selectedNoteId]);
 
-    function beginClipDrag(event: React.PointerEvent<HTMLDivElement>, track: Track) {
+    function beginClipDrag(event: React.PointerEvent<HTMLDivElement>, track: Track, block: MidiBlock) {
         const timeline = timelineRef.current;
         if (!timeline) return;
 
@@ -421,10 +461,11 @@ export default function EditorPage() {
         event.stopPropagation();
         const rect = timeline.getBoundingClientRect();
         setActiveTrackId(track.id);
+        setActiveBlockId(block.id);
         setClipDragState({
-            trackId: track.id,
+            blockId: block.id,
             pointerStartStep: ((event.clientX - rect.left) / rect.width) * TOTAL_STEPS,
-            clipStartStep: clipStartSteps[track.id] ?? 1,
+            clipStartStep: block.start_step,
         });
     }
 
@@ -440,10 +481,20 @@ export default function EditorPage() {
             const nextStartStep = Math.max(0, Math.min(TOTAL_STEPS - 6, Math.round(
                 activeClipDrag.clipStartStep + pointerStep - activeClipDrag.pointerStartStep,
             )));
-            setClipStartSteps((current) => ({ ...current, [activeClipDrag.trackId]: nextStartStep }));
+            setBlocks((currentBlocks) => currentBlocks.map((block) =>
+                block.id === activeClipDrag.blockId ? { ...block, start_step: nextStartStep } : block,
+            ));
         }
 
-        function finishClipDrag() {
+        async function finishClipDrag() {
+            const block = blocks.find((currentBlock) => currentBlock.id === activeClipDrag.blockId);
+            if (block) {
+                try {
+                    await updateMidiBlock(block.id, { start_step: block.start_step });
+                } catch (moveError) {
+                    setError(moveError instanceof Error ? moveError.message : "Could not move MIDI block.");
+                }
+            }
             setClipDragState(null);
         }
 
@@ -453,7 +504,7 @@ export default function EditorPage() {
             window.removeEventListener("pointermove", moveClip);
             window.removeEventListener("pointerup", finishClipDrag);
         };
-    }, [clipDragState]);
+    }, [blocks, clipDragState]);
 
     useEffect(() => {
         function closeTrackContextMenu() {
@@ -548,7 +599,10 @@ export default function EditorPage() {
                     {tracks.map((track) => (
                         <div
                             key={track.id}
-                            onClick={() => setActiveTrackId(track.id)}
+                            onClick={() => {
+                                setActiveTrackId(track.id);
+                                setActiveBlockId(blocks.find((block) => block.track_id === track.id)?.id ?? null);
+                            }}
                             onContextMenu={(event) => {
                                 event.preventDefault();
                                 setTrackContextMenu({ trackId: track.id, x: event.clientX, y: event.clientY });
@@ -606,22 +660,38 @@ export default function EditorPage() {
 
                             {/* Timeline Track Lane */}
                             <div ref={track.id === tracks[0]?.id ? timelineRef : undefined} style={styles.timelineLane}>
-                                <div
-                                    onPointerDown={(event) => beginClipDrag(event, track)}
-                                    style={{
-                                        ...styles.midiClip,
-                                        left: `${((clipStartSteps[track.id] ?? 1) / TOTAL_STEPS) * 100}%`,
-                                        background: track.position % 2 === 0 ? "var(--secondary)" : "var(--primary)",
-                                        outline: activeTrackId === track.id ? "2px solid #e9a82e" : "none",
+                                {blocks.filter((block) => block.track_id === track.id).map((block) => (
+                                    <div
+                                        key={block.id}
+                                        onPointerDown={(event) => beginClipDrag(event, track, block)}
+                                        style={{
+                                            ...styles.midiClip,
+                                            left: `${(block.start_step / TOTAL_STEPS) * 100}%`,
+                                            width: `${(block.length_steps / TOTAL_STEPS) * 100}%`,
+                                            background: track.position % 2 === 0 ? "var(--secondary)" : "var(--primary)",
+                                            outline: activeBlockId === block.id ? "2px solid #e9a82e" : "none",
+                                        }}
+                                    >
+                                        <span style={styles.clipTitle}>{block.name}</span>
+                                        <span style={styles.clipPattern} aria-hidden="true">
+                                            {[2, 4, 1, 5, 3, 6, 4, 2].map((height, index) => (
+                                                <i key={index} style={{ ...styles.clipPatternBar, height: `${height * 3}px` }} />
+                                            ))}
+                                        </span>
+                                    </div>
+                                ))}
+                                <button
+                                    type="button"
+                                    aria-label={`Add MIDI block to ${track.name}`}
+                                    title="Add MIDI block"
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        void addBlock(track);
                                     }}
+                                    style={styles.addBlockButton}
                                 >
-                                    <span style={styles.clipTitle}>MIDI Clip</span>
-                                    <span style={styles.clipPattern} aria-hidden="true">
-                                        {[2, 4, 1, 5, 3, 6, 4, 2].map((height, index) => (
-                                            <i key={index} style={{ ...styles.clipPatternBar, height: `${height * 3}px` }} />
-                                        ))}
-                                    </span>
-                                </div>
+                                    <Plus size={13} />
+                                </button>
                             </div>
                         </div>
                     ))}
@@ -1048,6 +1118,21 @@ const styles: Record<string, React.CSSProperties> = {
         cursor: "grab",
         touchAction: "none",
         overflow: "hidden",
+    },
+    addBlockButton: {
+        position: "absolute",
+        right: "10px",
+        top: "50%",
+        transform: "translateY(-50%)",
+        width: "28px",
+        height: "28px",
+        display: "grid",
+        placeItems: "center",
+        border: "1px dashed rgba(255, 255, 255, 0.25)",
+        borderRadius: "4px",
+        background: "transparent",
+        color: "#a8adb5",
+        cursor: "pointer",
     },
     clipTitle: {
         alignSelf: "flex-start",

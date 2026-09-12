@@ -41,38 +41,76 @@ export type Database = {
     Tables: {
       notes: {
         Row: {
+          block_id: string
           created_at: string
           duration: number
           id: string
           pitch: string
           start_step: number
-          track_id: string
           updated_at: string
           user_id: string | null
         }
         Insert: {
+          block_id: string
           created_at?: string
           duration: number
           id?: string
           pitch: string
           start_step: number
-          track_id: string
           updated_at?: string
           user_id?: string | null
         }
         Update: {
+          block_id?: string
           created_at?: string
           duration?: number
           id?: string
           pitch?: string
           start_step?: number
-          track_id?: string
           updated_at?: string
           user_id?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "notes_track_id_fkey"
+            foreignKeyName: "notes_block_id_fkey"
+            columns: ["block_id"]
+            isOneToOne: false
+            referencedRelation: "midi_blocks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      midi_blocks: {
+        Row: {
+          created_at: string
+          id: string
+          length_steps: number
+          name: string
+          start_step: number
+          track_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          length_steps?: number
+          name?: string
+          start_step?: number
+          track_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          length_steps?: number
+          name?: string
+          start_step?: number
+          track_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "midi_blocks_track_id_fkey"
             columns: ["track_id"]
             isOneToOne: false
             referencedRelation: "tracks"

@@ -3,6 +3,7 @@ import type { Tables } from "./supabase/supabase";
 import type { NoteBlock } from "../types/music";
 
 export type Track = Pick<Tables<"tracks">, "id" | "project_id" | "name" | "position">;
+export type MidiBlock = Pick<Tables<"midi_blocks">, "id" | "track_id" | "name" | "start_step" | "length_steps">;
 
 export async function getTracks(projectId: string): Promise<Track[]> {
     const { data, error } = await supabase
@@ -52,15 +53,6 @@ export async function renameTrack(trackId: string, name: string): Promise<Track>
 }
 
 export async function deleteTrack(trackId: string): Promise<void> {
-    const { error: notesError } = await supabase
-        .from("notes")
-        .delete()
-        .eq("track_id", trackId);
-
-    if (notesError) {
-        throw notesError;
-    }
-
     const { error: trackError } = await supabase
         .from("tracks")
         .delete()
@@ -71,11 +63,53 @@ export async function deleteTrack(trackId: string): Promise<void> {
     }
 }
 
-export async function getTrackNotes(trackId: string): Promise<NoteBlock[]> {
+export async function getTrackBlocks(trackId: string): Promise<MidiBlock[]> {
+    const { data, error } = await supabase
+        .from("midi_blocks")
+        .select("id, track_id, name, start_step, length_steps")
+        .eq("track_id", trackId)
+        .order("start_step");
+
+    if (error) throw error;
+    return data ?? [];
+}
+
+export async function createMidiBlock(
+    trackId: string,
+    name: string,
+    startStep: number,
+    lengthSteps: number,
+): Promise<MidiBlock> {
+    const { data, error } = await supabase
+        .from("midi_blocks")
+        .insert({ track_id: trackId, name, start_step: startStep, length_steps: lengthSteps })
+        .select("id, track_id, name, start_step, length_steps")
+        .single();
+
+    if (error) throw error;
+    return data;
+}
+
+export async function updateMidiBlock(
+    blockId: string,
+    changes: Partial<Pick<MidiBlock, "name" | "start_step" | "length_steps">>,
+): Promise<MidiBlock> {
+    const { data, error } = await supabase
+        .from("midi_blocks")
+        .update({ ...changes, updated_at: new Date().toISOString() })
+        .eq("id", blockId)
+        .select("id, track_id, name, start_step, length_steps")
+        .single();
+
+    if (error) throw error;
+    return data;
+}
+
+export async function getBlockNotes(blockId: string): Promise<NoteBlock[]> {
     const { data, error } = await supabase
         .from("notes")
         .select("id, pitch, start_step, duration, user_id")
-        .eq("track_id", trackId)
+        .eq("block_id", blockId)
         .order("start_step");
 
     if (error) {
@@ -91,15 +125,15 @@ export async function getTrackNotes(trackId: string): Promise<NoteBlock[]> {
     }));
 }
 
-export async function replaceTrackNotes(
-    trackId: string,
+export async function replaceBlockNotes(
+    blockId: string,
     notes: NoteBlock[],
     userId: string,
 ): Promise<void> {
     const { error: deleteError } = await supabase
         .from("notes")
         .delete()
-        .eq("track_id", trackId);
+        .eq("block_id", blockId);
 
     if (deleteError) {
         throw deleteError;
@@ -114,7 +148,7 @@ export async function replaceTrackNotes(
         .insert(
             notes.map((note) => ({
                 id: note.id,
-                track_id: trackId,
+                block_id: blockId,
                 pitch: note.pitch,
                 start_step: note.startStep,
                 duration: note.duration,
