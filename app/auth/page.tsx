@@ -71,7 +71,7 @@ export default function AuthPage() {
     <main className={styles.page}>
       <section className={styles.panel}>
         <p className={styles.eyebrow}>Stream Share</p>
-        <h1>{mode === "login" ? "Let's Groove :0" : "Create your account"}</h1>
+        <h1>{mode === "login" ? "Let's Groove :0" : "Sign up :-)"}</h1>
         <p className={styles.description}>
           {mode === "login"
             ? "Sign in to continue to your workspace."
