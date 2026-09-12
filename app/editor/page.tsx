@@ -82,46 +82,10 @@ export default function EditorPage() {
         };
     }, [user]);
 
-    const handleRemoteTrackAdded = useCallback((event: unknown) => {
-        const payload = (event as { payload?: { senderId?: string; track?: Track } }).payload;
-        if (!payload?.track) return;
-
-        setTracks((currentTracks) => currentTracks.some((track) => track.id === payload.track!.id)
-            ? currentTracks
-            : [...currentTracks, payload.track!].sort((first, second) => first.position - second.position));
-    }, []);
-
-    const handleRemoteTrackDeleted = useCallback((event: unknown) => {
-        const payload = (event as { payload?: { trackId?: string } }).payload;
-        if (!payload?.trackId) return;
-
-        setTracks((currentTracks) => currentTracks.filter((track) => track.id !== payload.trackId));
-        setActiveTrackId((currentTrackId) => currentTrackId === payload.trackId ? null : currentTrackId);
-    }, []);
-
-    const handleRemoteTrackRenamed = useCallback((event: unknown) => {
-        const payload = (event as { payload?: { track?: Track } }).payload;
-        if (!payload?.track) return;
-
-        setTracks((currentTracks) => currentTracks.map((track) =>
-            track.id === payload.track!.id ? payload.track! : track,
-        ));
-    }, []);
-
-    const {
-        peers,
-        isConnected,
-        broadcastNotes,
-        broadcastTrackAdded,
-        broadcastTrackDeleted,
-        broadcastTrackRenamed,
-    } = useRealTimeSync({
+    const { peers, isConnected, broadcastNotes } = useRealTimeSync({
         roomId: projectId ?? "",
         user: presence ?? { userId: "", userName: "", color: "" },
         onNotesUpdated: setNotes,
-        onTrackAdded: handleRemoteTrackAdded,
-        onTrackDeleted: handleRemoteTrackDeleted,
-        onTrackRenamed: handleRemoteTrackRenamed,
     });
 
     useEffect(() => {
@@ -224,7 +188,6 @@ export default function EditorPage() {
             const track = await createTrack(projectId, trackName, tracks.length);
             setTracks((currentTracks) => [...currentTracks, track]);
             setActiveTrackId(track.id);
-            await broadcastTrackAdded(track);
         } catch (createError) {
             setError(createError instanceof Error ? createError.message : "Could not create track.");
         } finally {
@@ -257,7 +220,6 @@ export default function EditorPage() {
                 currentTrack.id === renamedTrack.id ? renamedTrack : currentTrack,
             ));
             setRenamingTrackId(null);
-            await broadcastTrackRenamed(renamedTrack);
         } catch (renameError) {
             setError(renameError instanceof Error ? renameError.message : "Could not rename track.");
         }
@@ -285,7 +247,6 @@ export default function EditorPage() {
                 delete next[track.id];
                 return next;
             });
-            await broadcastTrackDeleted(track.id);
         } catch (deleteError) {
             setError(deleteError instanceof Error ? deleteError.message : "Could not delete track.");
         } finally {

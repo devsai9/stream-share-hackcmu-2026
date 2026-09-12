@@ -1,14 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-	broadcastTrackAdded,
-	broadcastTrackDeleted,
-	broadcastTrackRenamed,
-	joinProjectChannel,
-	leaveChannel,
-} from "../lib/broadcast";
-import type { Track } from "../lib/editor";
+import { supabase } from "../lib/supabase/client";
 import type { NoteBlock, PeerPresence } from "../types/music";
 
 const NOTES_EVENT = "notes-updated";
@@ -19,9 +12,6 @@ export interface UseRealTimeSyncOptions {
 	user: PeerPresence;
 	onNotesUpdated?: (notes: NoteBlock[]) => void;
 	onCursorMoved?: (presence: PeerPresence) => void;
-	onTrackAdded?: (payload: unknown) => void;
-	onTrackDeleted?: (payload: unknown) => void;
-	onTrackRenamed?: (payload: unknown) => void;
 }
 
 export interface UseRealTimeSyncReturn {
@@ -29,9 +19,6 @@ export interface UseRealTimeSyncReturn {
 	isConnected: boolean;
 	broadcastNotes: (notes: NoteBlock[]) => Promise<void>;
 	broadcastCursor: (cursorStep: number | undefined) => Promise<void>;
-	broadcastTrackAdded: (track: Track) => Promise<void>;
-	broadcastTrackDeleted: (trackId: string) => Promise<void>;
-	broadcastTrackRenamed: (track: Track) => Promise<void>;
 }
 
 /** Syncs ephemeral editor state through one Supabase Realtime channel per room. */
@@ -40,62 +27,60 @@ export function useRealTimeSync({
 	user,
 	onNotesUpdated,
 	onCursorMoved,
-	onTrackAdded,
-	onTrackDeleted,
-	onTrackRenamed,
 }: UseRealTimeSyncOptions): UseRealTimeSyncReturn {
 	const [peers, setPeers] = useState<PeerPresence[]>([]);
 	const [isConnected, setIsConnected] = useState(false);
-	const channelRef = useRef<Awaited<ReturnType<typeof joinProjectChannel>> | null>(null);
-	const callbacksRef = useRef({ onNotesUpdated, onCursorMoved, onTrackAdded, onTrackDeleted, onTrackRenamed });
+	const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+	const callbacksRef = useRef({ onNotesUpdated, onCursorMoved });
 
 	useEffect(() => {
-		callbacksRef.current = { onNotesUpdated, onCursorMoved, onTrackAdded, onTrackDeleted, onTrackRenamed };
-	}, [onNotesUpdated, onCursorMoved, onTrackAdded, onTrackDeleted, onTrackRenamed]);
+		callbacksRef.current = { onNotesUpdated, onCursorMoved };
+	}, [onNotesUpdated, onCursorMoved]);
 
 	useEffect(() => {
 		if (!roomId || !user.userId) return;
 
-		let cancelled = false;
-		void joinProjectChannel(roomId, {
-			onNotesUpdated: (event) => {
-				const payload = event as { payload?: { senderId?: string; notes?: unknown } };
-				const eventPayload = payload.payload;
-				if (eventPayload?.senderId !== user.userId && Array.isArray(eventPayload?.notes)) {
-					callbacksRef.current.onNotesUpdated?.(eventPayload.notes as NoteBlock[]);
-				}
-			},
-			onCursorMoved: (event) => {
-				const payload = event as { payload?: { senderId?: string; presence?: PeerPresence } };
-				const eventPayload = payload.payload;
-				if (eventPayload?.senderId !== user.userId && eventPayload?.presence) {
-					callbacksRef.current.onCursorMoved?.(eventPayload.presence);
-				}
-			},
-			onTrackAdded: (event) => callbacksRef.current.onTrackAdded?.(event),
-			onTrackDeleted: (event) => callbacksRef.current.onTrackDeleted?.(event),
-			onTrackRenamed: (event) => callbacksRef.current.onTrackRenamed?.(event),
-			onPresenceUpdated: (presences) => {
-				setPeers(presences.filter((presence) => presence.userId !== user.userId));
-			},
-		}, { key: user.userId, value: user }).then((channel) => {
-			if (cancelled) {
-				void leaveChannel(channel);
-				return;
-			}
-			channelRef.current = channel;
-			setIsConnected(true);
-		}).catch(() => {
-			if (!cancelled) setIsConnected(false);
+		const channel = supabase.channel(`room:${roomId}`, {
+			config: { presence: { key: user.userId } },
 		});
+		channelRef.current = channel;
+
+		const updatePeers = () => {
+			const state = channel.presenceState<PeerPresence>();
+			const nextPeers = Object.values(state)
+				.flat()
+				.filter((presence) => presence.userId !== user.userId);
+			setPeers(nextPeers);
+		};
+
+		channel
+			.on("presence", { event: "sync" }, updatePeers)
+			.on("presence", { event: "join" }, updatePeers)
+			.on("presence", { event: "leave" }, updatePeers)
+			.on("broadcast", { event: NOTES_EVENT }, ({ payload }) => {
+				if (payload?.senderId !== user.userId && Array.isArray(payload?.notes)) {
+					callbacksRef.current.onNotesUpdated?.(payload.notes as NoteBlock[]);
+				}
+			})
+			.on("broadcast", { event: CURSOR_EVENT }, ({ payload }) => {
+				if (payload?.senderId !== user.userId && payload?.presence) {
+					callbacksRef.current.onCursorMoved?.(payload.presence as PeerPresence);
+				}
+			})
+			.subscribe(async (status) => {
+				if (status === "SUBSCRIBED") {
+					await channel.track(user);
+					setIsConnected(true);
+				} else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+					setIsConnected(false);
+				}
+			});
 
 		return () => {
-			cancelled = true;
-			const channel = channelRef.current;
 			channelRef.current = null;
 			setIsConnected(false);
 			setPeers([]);
-			if (channel) void leaveChannel(channel);
+			void supabase.removeChannel(channel);
 		};
 	}, [roomId, user]);
 
@@ -123,31 +108,5 @@ export function useRealTimeSync({
 		});
 	}, [isConnected, user]);
 
-	const sendTrackAdded = useCallback(async (track: Track) => {
-		if (channelRef.current && isConnected) {
-			await broadcastTrackAdded(channelRef.current, user.userId, track);
-		}
-	}, [isConnected, user.userId]);
-
-	const sendTrackDeleted = useCallback(async (trackId: string) => {
-		if (channelRef.current && isConnected) {
-			await broadcastTrackDeleted(channelRef.current, user.userId, trackId);
-		}
-	}, [isConnected, user.userId]);
-
-	const sendTrackRenamed = useCallback(async (track: Track) => {
-		if (channelRef.current && isConnected) {
-			await broadcastTrackRenamed(channelRef.current, user.userId, track);
-		}
-	}, [isConnected, user.userId]);
-
-	return {
-		peers,
-		isConnected,
-		broadcastNotes,
-		broadcastCursor,
-		broadcastTrackAdded: sendTrackAdded,
-		broadcastTrackDeleted: sendTrackDeleted,
-		broadcastTrackRenamed: sendTrackRenamed,
-	};
+	return { peers, isConnected, broadcastNotes, broadcastCursor };
 }
