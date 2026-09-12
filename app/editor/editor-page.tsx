@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Play, Pause, Square, Mic, Music2, Plus, Users, Trash2 } from "lucide-react";
+import { ArrowLeft, Play, Pause, Square, Music2, Plus, Users, Trash2 } from "lucide-react";
 import { getUser } from "../../lib/auth";
 import {
     getTracks,
@@ -18,7 +18,7 @@ import {
     type MidiBlock,
     type Track,
 } from "../../lib/editor";
-import { loadProject, type Project } from "../../lib/projects";
+import { loadProject, updateProjectBpm, type Project } from "../../lib/projects";
 import { useAudioEngine } from "../../hooks/useAudioEngine";
 import {
     useRealTimeSync,
@@ -197,6 +197,13 @@ export default function EditorPage() {
         ));
     }, []);
 
+    const applyBpm = useCallback((nextBpm: number) => {
+        setBpm(nextBpm);
+        setProject((currentProject) => currentProject
+            ? { ...currentProject, bpm: nextBpm }
+            : currentProject);
+    }, [setBpm]);
+
     const handleNotesUpdated = useCallback((nextNotes: NoteBlock[]) => {
         setNotes(nextNotes);
     }, []);
@@ -208,7 +215,6 @@ export default function EditorPage() {
     const {
         peers,
         localPresence,
-        isConnected,
         broadcastNotes,
         broadcastTrackAdded,
         broadcastTrackRenamed,
@@ -216,6 +222,7 @@ export default function EditorPage() {
         broadcastBlockAdded,
         broadcastBlockDeleted,
         broadcastBlockMoved,
+        broadcastBpmChanged,
     } = useRealTimeSync({
         roomId: projectId ?? "",
         user: presence ?? { userId: "", userName: "", color: "" },
@@ -226,6 +233,7 @@ export default function EditorPage() {
         onBlockAdded: handleBlockAdded,
         onBlockDeleted: handleBlockDeleted,
         onBlockMoved: handleBlockMoved,
+        onBpmChanged: applyBpm,
     });
 
     useEffect(() => {
@@ -248,6 +256,7 @@ export default function EditorPage() {
 
                 setUser({ id: userData.user.id, email: userData.user.email });
                 setProject(loadedProject);
+                setBpm(loadedProject.bpm);
 
                 let loadedTracks = await getTracks(projectId);
                 if (loadedTracks.length === 0) {
@@ -277,7 +286,7 @@ export default function EditorPage() {
         }
 
         void loadEditor();
-    }, [projectId]);
+    }, [projectId, setBpm]);
 
     useEffect(() => {
         if (!activeBlockId) return;
@@ -325,6 +334,20 @@ export default function EditorPage() {
             setError(saveError instanceof Error ? saveError.message : "Could not save notes.");
         }
     }, [activeBlockId, broadcastNotes, persistNotes]);
+
+    async function updateBpm(nextBpm: number) {
+        const safeBpm = Math.max(20, Math.min(300, nextBpm));
+        applyBpm(safeBpm);
+
+        if (!projectId) return;
+
+        try {
+            await updateProjectBpm(projectId, safeBpm);
+            await broadcastBpmChanged(safeBpm);
+        } catch (bpmError) {
+            setError(bpmError instanceof Error ? bpmError.message : "Could not save BPM.");
+        }
+    }
 
     function getNotePlacement(pitch: string, startStep: number, endStep: number) {
         const placementStart = Math.min(startStep, endStep);
@@ -836,47 +859,47 @@ export default function EditorPage() {
         <div style={styles.pageContainer}>
             {/* 1. TOP CONTROL BAR */}
             <header style={styles.header}>
-                <button
-                    type="button"
-                    onClick={() => router.push("/projects")}
-                    style={styles.backButton}
-                    aria-label="Back to projects"
-                    title="Back to projects"
-                >
-                    <ArrowLeft size={17} />
-                </button>
-                {/* Transport Controls */}
-                <div style={styles.flexCenterGap3}>
+                <div style={styles.headerLeftGroup}>
                     <button
-                        onClick={() => void togglePlayback()}
-                        style={styles.playButton}
+                        type="button"
+                        onClick={() => router.push("/projects")}
+                        style={styles.backButton}
+                        aria-label="Back to projects"
+                        title="Back to projects"
                     >
-                        {isPlaying ? <Pause size={18} /> : <Play size={18} style={{ marginLeft: "2px" }} />}
+                        <ArrowLeft size={17} />
                     </button>
-                    <button style={styles.iconButton} onClick={stopPlayback}>
-                        <Square size={16} />
-                    </button>
-                    <button style={{ ...styles.iconButton, color: "#ef4444" }}>
-                        <Mic size={18} />
-                    </button>
+                    {/* Transport Controls */}
+                    <div style={styles.flexCenterGap3}>
+                        <button
+                            onClick={() => void togglePlayback()}
+                            style={styles.playButton}
+                            aria-label={isPlaying ? "Pause" : "Play"}
+                        >
+                            {isPlaying ? <Pause size={18} /> : <Play size={18} style={{ marginLeft: "2px" }} />}
+                        </button>
+                        <button style={styles.iconButton} onClick={stopPlayback} aria-label="Restart playback">
+                            <Square size={16} />
+                        </button>
 
-                    <div style={styles.divider} />
+                        <div style={styles.divider} />
 
-                    {/* BPM Input */}
-                    <div style={styles.bpmContainer}>
-                        <span style={{ color: "var(--accent)" }}>BPM</span>
-                        <input
-                            type="number"
-                            value={bpm}
-                            onChange={(e) => setBpm(Number(e.target.value))}
-                            style={styles.bpmInput}
-                        />
+                        {/* BPM Input */}
+                        <div style={styles.bpmContainer}>
+                            <span style={{ color: "var(--accent)" }}>BPM</span>
+                            <input
+                                type="number"
+                                value={bpm}
+                                onChange={(e) => void updateBpm(Number(e.target.value))}
+                                style={styles.bpmInput}
+                            />
+                        </div>
                     </div>
                 </div>
 
                 {/* Project Details */}
-                <div style={{ fontSize: "14px", fontWeight: 600, letterSpacing: "0.025em" }}>
-                    {project?.name ?? "Realtime Session"} <span style={{ color: "var(--accent)" }}>{isConnected ? "Online" : "Offline"}</span>
+                <div style={styles.projectTitle}>
+                    {project?.name ?? "Realtime Session"}
                 </div>
 
                 {/* Multiplayer Presence */}
@@ -1360,6 +1383,7 @@ const styles: Record<string, React.CSSProperties> = {
     },
     header: {
         height: "58px",
+        position: "relative",
         borderBottom: "1px solid var(--secondary-accent)",
         backgroundColor: "#090a0c",
         display: "flex",
@@ -1367,6 +1391,23 @@ const styles: Record<string, React.CSSProperties> = {
         justifyContent: "space-between",
         paddingLeft: "16px",
         paddingRight: "16px",
+    },
+    headerLeftGroup: {
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+    },
+    projectTitle: {
+        position: "absolute",
+        left: "50%",
+        maxWidth: "40%",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+        transform: "translateX(-50%)",
+        fontSize: "14px",
+        fontWeight: 600,
+        letterSpacing: "0.025em",
     },
     backButton: {
         padding: "8px",

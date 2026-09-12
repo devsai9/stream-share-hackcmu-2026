@@ -2,7 +2,7 @@ import { supabase } from "./supabase/client";
 import { getUser } from "./auth";
 import type { Tables } from "./supabase/supabase";
 
-export type Project = Pick<Tables<"projects">, "id" | "name" | "description">;
+export type Project = Pick<Tables<"projects">, "id" | "name" | "description" | "bpm">;
 
 export async function getProjects(): Promise<Project[]> {
     const { data: userData, error: userError } = await getUser();
@@ -17,7 +17,7 @@ export async function getProjects(): Promise<Project[]> {
 
     const { data, error } = await supabase
         .from("projects")
-        .select("id, name, description, project_members!inner(user_id)")
+        .select("id, name, description, bpm, project_members!inner(user_id)")
         .eq("project_members.user_id", userData.user.id);
 
     if (error) {
@@ -45,7 +45,7 @@ export async function createProject(name: string, description: string): Promise<
             name,
             description,
         })
-        .select("id, name, description")
+        .select("id, name, description, bpm")
         .single();
 
     if (projectError) {
@@ -68,7 +68,22 @@ export async function updateProject(id: string, name: string, description: strin
         .from("projects")
         .update({ name, description })
         .eq("id", id)
-        .select("id, name, description")
+        .select("id, name, description, bpm")
+        .single();
+
+    if (error) {
+        throw error;
+    }
+
+    return data;
+}
+
+export async function updateProjectBpm(id: string, bpm: number): Promise<Project> {
+    const { data, error } = await supabase
+        .from("projects")
+        .update({ bpm })
+        .eq("id", id)
+        .select("id, name, description, bpm")
         .single();
 
     if (error) {
@@ -101,7 +116,7 @@ export async function shareProject(id: string, userId: string): Promise<void> {
 export async function loadProject(id: string): Promise<Project> {
     const { data, error } = await supabase
         .from("projects")
-        .select("id, name, description")
+        .select("id, name, description, bpm")
         .eq("id", id)
         .single();
 
