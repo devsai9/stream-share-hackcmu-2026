@@ -20,7 +20,7 @@ import {
 } from "../../lib/editor";
 import { loadProject, type Project } from "../../lib/projects";
 import { useAudioEngine } from "../../hooks/useAudioEngine";
-import { useRealTimeSync } from "../../hooks/useRealTimeSync";
+import { useRealTimeSync, type TrackAddedPayload } from "../../hooks/useRealTimeSync";
 import type { NoteBlock, PeerPresence } from "../../types/music";
 
 const PITCHES = ["C5", "B4", "A4", "G4", "F4", "E4", "D4", "C4"];
@@ -113,10 +113,26 @@ export default function EditorPage() {
         };
     }, [user]);
 
-    const { peers, isConnected, broadcastNotes } = useRealTimeSync({
+    const handleTrackAdded = useCallback(({ track, block }: TrackAddedPayload) => {
+        setTracks((currentTracks) => {
+            if (currentTracks.some((currentTrack) => currentTrack.id === track.id)) {
+                return currentTracks;
+            }
+
+            return [...currentTracks, track].sort((left, right) => left.position - right.position);
+        });
+        setBlocks((currentBlocks) =>
+            currentBlocks.some((currentBlock) => currentBlock.id === block.id)
+                ? currentBlocks
+                : [...currentBlocks, block],
+        );
+    }, []);
+
+    const { peers, isConnected, broadcastNotes, broadcastTrackAdded } = useRealTimeSync({
         roomId: projectId ?? "",
         user: presence ?? { userId: "", userName: "", color: "" },
         onNotesUpdated: setNotes,
+        onTrackAdded: handleTrackAdded,
     });
 
     useEffect(() => {
@@ -287,6 +303,7 @@ export default function EditorPage() {
             setBlocks((currentBlocks) => [...currentBlocks, block]);
             setActiveTrackId(track.id);
             setActiveBlockId(block.id);
+            await broadcastTrackAdded({ track, block });
         } catch (createError) {
             setError(createError instanceof Error ? createError.message : "Could not create track.");
         } finally {
