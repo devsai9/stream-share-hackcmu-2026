@@ -5,9 +5,20 @@ import type { Tables } from "./supabase/supabase";
 export type Project = Pick<Tables<"projects">, "id" | "name" | "description">;
 
 export async function getProjects(): Promise<Project[]> {
+    const { data: userData, error: userError } = await getUser();
+
+    if (userError) {
+        throw userError;
+    }
+
+    if (!userData.user) {
+        throw new Error("You must be signed in to view your projects.");
+    }
+
     const { data, error } = await supabase
         .from("projects")
-        .select("id, name, description");
+        .select("id, name, description, project_members!inner(user_id)")
+        .eq("project_members.user_id", userData.user.id);
 
     if (error) {
         throw error;

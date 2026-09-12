@@ -77,6 +77,12 @@
     margin-bottom: 1.25rem;
 }
 
+.sectionActions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
 .sectionHeader h2 {
     margin: 0;
     font-size: 1rem;
@@ -86,6 +92,93 @@
 
 .count {
     color: var(--accent);
+    font-size: 0.8rem;
+}
+
+.createButton,
+.submitButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    border: 1px solid var(--primary);
+    padding: 0.65rem 0.85rem;
+    background: var(--primary);
+    color: var(--foreground);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.createButton:hover,
+.submitButton:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.createButton:focus-visible,
+.submitButton:focus-visible,
+.formField input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.createButton svg {
+    flex-shrink: 0;
+}
+
+.createForm {
+    display: flex;
+    align-items: flex-end;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--secondary);
+    padding: 1rem;
+    background: rgb(70 12 0 / 45%);
+}
+
+.formFields {
+    display: grid;
+    flex: 1;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    gap: 1rem;
+}
+
+.formField {
+    display: grid;
+    gap: 0.4rem;
+    color: var(--accent);
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.formField small {
+    font-weight: 400;
+}
+
+.formField input {
+    width: 100%;
+    border: 1px solid var(--secondary);
+    padding: 0.7rem 0.75rem;
+    background: var(--background);
+    color: var(--foreground);
+    font: inherit;
+    font-size: 0.9rem;
+}
+
+.formField input::placeholder {
+    color: rgb(252 250 205 / 50%);
+}
+
+.submitButton:disabled {
+    cursor: wait;
+    opacity: 0.6;
+}
+
+.formError {
+    margin: 0;
+    color: var(--foreground);
     font-size: 0.8rem;
 }
 
@@ -107,16 +200,22 @@
     transition: border-color 160ms ease, transform 160ms ease, background 160ms ease;
 }
 
-.projectCard:hover,
-.projectCard:focus-visible {
+.projectCard:hover {
     border-color: var(--accent);
     background: var(--secondary);
     transform: translateY(-3px);
 }
 
-.projectCard:focus-visible {
+.projectLink:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 3px;
+}
+
+.projectLink {
+    display: flex;
+    min-height: 12rem;
+    flex-direction: column;
+    gap: 1.5rem;
 }
 
 .cardIcon {
@@ -157,6 +256,121 @@
     color: var(--accent);
 }
 
+.menuButton {
+    position: absolute;
+    top: 0.9rem;
+    right: 0.9rem;
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    place-items: center;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--foreground);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 160ms ease, background 160ms ease;
+}
+
+.projectCard:hover .menuButton,
+.menuButton:focus-visible,
+.menuButton[aria-expanded="true"] {
+    opacity: 1;
+}
+
+.menuButton:hover,
+.menuButton:focus-visible {
+    border-color: var(--accent);
+    background: var(--primary);
+    outline: none;
+}
+
+.projectMenu {
+    position: absolute;
+    z-index: 2;
+    top: 3.25rem;
+    right: 0.9rem;
+    min-width: 10rem;
+    border: 1px solid var(--secondary);
+    padding: 0.25rem;
+    background: var(--background);
+    box-shadow: 0 12px 30px rgb(0 0 0 / 35%);
+}
+
+.menuItem {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 0.5rem;
+    border: 0;
+    padding: 0.65rem 0.7rem;
+    background: transparent;
+    color: var(--foreground);
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.8rem;
+    text-align: left;
+}
+
+.menuItem:hover,
+.menuItem:focus-visible {
+    background: var(--secondary-accent);
+    color: var(--accent);
+    outline: none;
+}
+
+.dialogBackdrop {
+    position: fixed;
+    z-index: 10;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 1.25rem;
+    background: rgb(16 5 2 / 78%);
+}
+
+.shareDialog {
+    display: grid;
+    width: min(100%, 28rem);
+    gap: 1.25rem;
+    border: 1px solid var(--secondary);
+    padding: 1.5rem;
+    background: var(--secondary-accent);
+    box-shadow: 0 20px 60px rgb(0 0 0 / 45%);
+}
+
+.dialogHeader {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.dialogHeader h2 {
+    margin: 0;
+    font-family: Georgia, serif;
+    font-size: 1.8rem;
+    font-weight: 500;
+}
+
+.closeButton {
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    place-items: center;
+    border: 1px solid var(--secondary);
+    background: transparent;
+    color: var(--foreground);
+    cursor: pointer;
+}
+
+.closeButton:hover,
+.closeButton:focus-visible {
+    border-color: var(--accent);
+    color: var(--accent);
+    outline: none;
+}
+
 .status,
 .error,
 .emptyState {
@@ -194,5 +408,24 @@
     .emptyState {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .sectionHeader,
+    .sectionActions,
+    .createForm {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .sectionActions {
+        gap: 0.75rem;
+    }
+
+    .createForm {
+        align-items: stretch;
+    }
+
+    .formFields {
+        grid-template-columns: 1fr;
     }
 }
