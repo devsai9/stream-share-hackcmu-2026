@@ -3,7 +3,6 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { supabase } from "../../lib/supabase/client";
 import { login, signup } from "../../lib/auth";
 
 import styles from "./page.module.css";
