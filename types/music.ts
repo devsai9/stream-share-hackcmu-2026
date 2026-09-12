@@ -7,15 +7,9 @@ export interface NoteBlock {
   isDragging?: boolean;
 }
 
-export interface CursorPosition {
-  x: number;
-  y: number;
-}
-
 export interface PeerPresence {
   userId: string;
   userName: string;
-  email?: string;
   color: string;
-  cursor?: CursorPosition;
+  cursorStep?: number;
 }
