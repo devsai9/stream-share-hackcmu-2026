@@ -2,7 +2,7 @@ import { supabase } from "./supabase/client";
 import { getUser } from "./auth";
 import type { Tables } from "./supabase/supabase";
 
-type Project = Pick<Tables<"projects">, "id" | "name" | "description">;
+export type Project = Pick<Tables<"projects">, "id" | "name" | "description">;
 
 export async function getProjects(): Promise<Project[]> {
     const { data, error } = await supabase

@@ -1,0 +1,198 @@
+.page {
+    min-height: 100vh;
+    padding: clamp(2rem, 6vw, 5rem) clamp(1.25rem, 5vw, 5rem);
+    background:
+        radial-gradient(circle at 85% 0%, rgb(184 78 16 / 18%), transparent 30rem),
+        var(--background);
+    color: var(--foreground);
+}
+
+.content {
+    width: min(100%, 72rem);
+    margin: 0 auto;
+}
+
+.header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 2rem;
+    padding-bottom: clamp(2.5rem, 7vw, 5rem);
+    border-bottom: 1px solid var(--secondary-accent);
+}
+
+.eyebrow {
+    margin: 0 0 1rem;
+    color: var(--accent);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.header h1 {
+    max-width: 38rem;
+    margin: 0;
+    font-family: Georgia, serif;
+    font-size: clamp(2.5rem, 7vw, 5.5rem);
+    font-weight: 500;
+    line-height: 0.98;
+}
+
+.description {
+    margin: 1.25rem 0 0;
+    color: var(--accent);
+    font-size: 1.05rem;
+    line-height: 1.6;
+}
+
+.identity {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-shrink: 0;
+    border: 1px solid var(--secondary);
+    padding: 0.65rem 0.8rem;
+    color: var(--accent);
+    font-size: 0.8rem;
+}
+
+.identityDot {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px rgb(210 131 42 / 16%);
+}
+
+.projectsSection {
+    padding-top: clamp(2rem, 5vw, 4rem);
+}
+
+.sectionHeader {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.sectionHeader h2 {
+    margin: 0;
+    font-size: 1rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.count {
+    color: var(--accent);
+    font-size: 0.8rem;
+}
+
+.projectGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+    gap: 1rem;
+}
+
+.projectCard {
+    position: relative;
+    display: flex;
+    min-height: 12rem;
+    flex-direction: column;
+    gap: 1.5rem;
+    border: 1px solid var(--secondary);
+    padding: 1.25rem;
+    background: var(--secondary-accent);
+    transition: border-color 160ms ease, transform 160ms ease, background 160ms ease;
+}
+
+.projectCard:hover,
+.projectCard:focus-visible {
+    border-color: var(--accent);
+    background: var(--secondary);
+    transform: translateY(-3px);
+}
+
+.projectCard:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+}
+
+.cardIcon {
+    display: grid;
+    width: 2.5rem;
+    height: 2.5rem;
+    place-items: center;
+    color: var(--accent);
+    border: 1px solid var(--secondary);
+}
+
+.cardContent {
+    margin-top: auto;
+    padding-right: 2rem;
+}
+
+.cardContent h3 {
+    margin: 0;
+    font-family: Georgia, serif;
+    font-size: 1.65rem;
+    font-weight: 500;
+}
+
+.cardContent p {
+    margin: 0.5rem 0 0;
+    overflow: hidden;
+    color: var(--accent);
+    font-size: 0.9rem;
+    line-height: 1.45;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cardArrow {
+    position: absolute;
+    top: 1.25rem;
+    right: 1.25rem;
+    color: var(--accent);
+}
+
+.status,
+.error,
+.emptyState {
+    margin: 0;
+    border: 1px dashed var(--secondary);
+    padding: 2rem;
+    color: var(--accent);
+}
+
+.error {
+    color: var(--foreground);
+}
+
+.emptyState {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--foreground);
+}
+
+.emptyState span {
+    color: var(--accent);
+}
+
+@media (max-width: 600px) {
+    .header {
+        display: block;
+    }
+
+    .identity {
+        width: fit-content;
+        margin-top: 2rem;
+    }
+
+    .emptyState {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+}
